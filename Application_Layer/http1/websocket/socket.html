@@ -1,0 +1,20 @@
+<html>
+    <head>
+        <script src="socket.js"></script>
+    </head>
+    <body>
+        <div>
+            Connect to: 
+            <input type="text" id="address" value="ws://localhost:8081"/>
+            <button onclick="connect()">Connect</button>
+            <span id="status"></span>
+        </div>
+        <div>
+            Message:
+            <input type="text" id="msg"/>
+            <button onclick="send()">Send</button>
+        </div>
+        <div>Received:</div>
+        <div id="received"></div>
+    </body>
+</html>
