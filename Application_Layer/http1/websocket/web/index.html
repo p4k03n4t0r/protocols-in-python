@@ -1,12 +1,15 @@
 <html>
     <head>
-        <script src="socket.js"></script>
+        <script src="index.js"></script>
     </head>
     <body>
         <div>
-            Connect to: 
-            <input type="text" id="address" value="ws://localhost:8081"/>
+            Connect to (plain: ws://localhost:8082 or secure: wss://localhost:8084): 
+        </div>
+        <div>
+            <input type="text" id="address" value="ws://localhost:8082"/>
             <button onclick="connect()">Connect</button>
+            <button onclick="disconnect()">Disconnect</button>
             <span id="status"></span>
         </div>
         <div>

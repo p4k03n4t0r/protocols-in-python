@@ -13,13 +13,17 @@ function connect() {
 
     socket.addEventListener("close", function(event) {
         document.getElementById("status").innerHTML = "Socket closed!";
-    })
+    });
 
     // Listen for messages
     socket.addEventListener("message", function (event) {
         console.log("Message from server: ", event.data);
         addMessageToOutput(event.data, "Server");
     });
+}
+
+function disconnect() {
+    socket.close();
 }
 
 function addMessageToOutput(message, from) {

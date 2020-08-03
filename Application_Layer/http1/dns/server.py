@@ -6,8 +6,8 @@ import sys
 from flask import Flask, request
 
 HOST = "0.0.0.0" 
-WEBSERVER_PORT = 8080
-DNS_PORT = 5053
+WEBSERVER_PORT = 80
+DNS_PORT = 53
 app = Flask(__name__)
 
 class Record:

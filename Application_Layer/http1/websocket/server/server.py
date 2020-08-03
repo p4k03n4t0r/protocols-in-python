@@ -3,12 +3,20 @@ from handshake import Handshake
 from frame import Frame
 import threading
 import time
+import os
 from flask import Flask, request
+import ssl
+import sys
+import signal
 
 HOST = "0.0.0.0" 
 WEBSERVER_PORT = 8080
 SOCKET_PORT = 8081
 app = Flask(__name__)
+if os.environ.get('SECURE') is not None:
+    SECURE = os.environ.get('SECURE') == "TRUE"
+else:
+    SECURE = False
 
 # TODO
 # implement frame concatenation (opcode 0 & fin 1 -> fin 0 means more frames will come with opcode 0 till last frame indicated by fin 1)
@@ -27,7 +35,7 @@ class ListenThread:
     def run(self):
         while True:
             print("Listening for frames 👂")
-            received_frame = Frame(conn)
+            received_frame = Frame(self.conn)
             print("Received frame 📥")
             if received_frame.opcode == 8:
                 print("Connection Close Frame received 👋")
@@ -37,15 +45,15 @@ class ListenThread:
                 # after a Ping Frame we have to return a Pong Frame to indicate the connection is still working
                 pong_frame = Frame.encode_pong_frame()
                 print("Returning Pong Frame {} 🏓".format(pong_frame))
-                conn.send(pong_frame)
+                self.conn.send(pong_frame)
             if received_frame.opcode == 10:
                 print("Pong Frame received 🏓")
             else:
                 print("With payload {} 💣".format(received_frame.payload))
                 ListenThread.last_message = received_frame.payload
                 return_frame = Frame.encode_frame("Thank you for your message: {}".format(received_frame.payload))
-                conn.send(return_frame)
-        conn.close()
+                self.conn.send(return_frame)
+        self.conn.close()
         print("Connection closed 👋")
         self.is_running = False
 
@@ -59,6 +67,9 @@ class ServerThread:
         thread = thread                           
         thread.start()   
 
+    def exit(self):
+        sys.exit()
+
 def handshake(conn):
     data = conn.recv(1024).decode("ascii")
     handshake = Handshake(data)
@@ -70,22 +81,20 @@ def send():
     global conn
     msg = request.args.get("msg")
     msg_frame = Frame.encode_frame(msg)  
-
     conn.send(msg_frame)
-
     return "Send!"
 
 @app.route('/receive')
 def receive():
     return ListenThread.last_message
 
-with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-    s.bind((HOST, SOCKET_PORT))
+def listen(sock):
+    sock.bind((HOST, SOCKET_PORT))
     print("Bound to port 🚪")
     while True:
         print("Listening for connections 👂")
-        s.listen()
-        conn, addr = s.accept()
+        sock.listen()
+        conn, addr = sock.accept()
         with conn:  
             print("Connection from {} 🔌".format(addr))
             handshake(conn)
@@ -94,6 +103,21 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             server_thread = ServerThread(conn, app)
 
             while listen_thread.is_running:
-                time.sleep(1)
-                
-            # TODO kill server_thread.thread
+                time.sleep(1) 
+            
+            # if it hasn't stopped yet, try to kill the flask process
+            try:
+                t = server_thread.thread
+                signal.pthread_kill(t.ident, signal.SIGINT)
+            except Exception: pass
+
+if SECURE:  
+    # TODO do this so wss also works
+    context = ssl.create_default_context()
+
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+    if SECURE:
+        with context.wrap_socket(sock, server_hostname=HOST) as ssock:
+            listen(ssock)
+    else:
+        listen(sock)
