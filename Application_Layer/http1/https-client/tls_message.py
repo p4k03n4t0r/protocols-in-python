@@ -14,6 +14,7 @@ class TLS_Message:
         "TLS_AES_128_CCM_8_SHA256": b"\x13\x05"
     }
 
+    # TODO for now only the ECDHE groups are supported except x448
     AVAILABLE_SUPPORTED_GROUPS = {
         # Elliptic Curve Groups (ECDHE)
         "secp256r1": b"\x00\x17",

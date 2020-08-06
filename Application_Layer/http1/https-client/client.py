@@ -5,8 +5,8 @@ import socket
 from key_generator import Key_Generator
 from tls_connection import TLS_Connection
 
-# HOST = 'github.com'
-HOST = 'example.com'
+HOST = 'github.com'
+# HOST = 'example.com'
 PORT = 443
 
 tls_connection = TLS_Connection()
@@ -38,14 +38,11 @@ with socket.create_connection((HOST, PORT)) as sock:
     tls_message.add_signature_hash_algorithm("rsa_pss_rsae_sha384")
     tls_message.add_signature_hash_algorithm("rsa_pss_rsae_sha512")
     tls_message.add_supported_group("secp256r1")
-    tls_message.add_supported_group("x25519")
     tls_message.add_supported_version("tls1.3")
-    client_private_key, client_public_key = Key_Generator.generate_x25519_keys()
-    client_private_key, client_public_key = Key_Generator.generate_secp256r1_keys()
+    client_private_key, client_public_key, client_key_share = Key_Generator.generate_secpr1_keys("secp256r1")
     tls_connection.client_private_key = client_private_key
     tls_connection.client_public_key = client_public_key
-    tls_connection.server_public_key = None
-    tls_message.add_public_key(client_public_key, "secp256r1")
+    tls_message.add_public_key(client_key_share, "secp256r1")
     # pack the request and send
     packed = TLS_Message_Packer.pack(tls_message)
     print("SENDING: 📤")
@@ -76,14 +73,16 @@ with socket.create_connection((HOST, PORT)) as sock:
             if server_response.key_exchange is not None:
                 print("Server_Hello")
                 # retrieve information about the connection from the Server_Hello
-                tls_connection.server_public_key = server_response.key_exchange
+                tls_connection.server_shared_key = server_response.key_exchange
                 # the crypthographic group(curve) to use
                 tls_connection.cryptographic_group = server_response.supported_group
                 # the cipher suite to use
                 tls_connection.cipher_suite = server_response.cipher_suite
                 # the TLS version to use
                 tls_connection.tls_version = server_response.supported_version
-                # -> this might be followed by a change cipher spec
+                # -> this might be followed by a change cipher spec (but this doesn't add anything)
+                # -> we can no calculate the keys with the response from the server
+                tls_connection.calculate_keys()
                 # -> all following messages afterwards are application data message (x17)
                 # -> client can also send application data messages (x17) to the server
             else:
@@ -96,6 +95,7 @@ with socket.create_connection((HOST, PORT)) as sock:
                 break
         # application_data (x17/23)
         if server_response.message_type == b"\x17":
+            # second
             print("Application Data")
             msg = tls_connection.decode(server_response.application_data)
             print(msg)

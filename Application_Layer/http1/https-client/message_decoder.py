@@ -9,3 +9,8 @@ class Message_Decoder:
         box = Box(prk, puk)
         d = box.decrypt(message)
         return d
+
+    @staticmethod
+    def decode_secp256r1(message, private_key, public_key):
+        return None
+        
