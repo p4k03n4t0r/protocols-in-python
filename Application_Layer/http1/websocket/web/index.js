@@ -9,6 +9,7 @@ function connect() {
 
     socket.addEventListener("open", function(event) {
         document.getElementById("status").innerHTML = "Socket opened!";
+        document.getElementById("received").innerHTML = "";
     });
 
     socket.addEventListener("close", function(event) {

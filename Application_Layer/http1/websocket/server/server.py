@@ -16,7 +16,7 @@ app = Flask(__name__)
 if os.environ.get('SECURE') is not None:
     SECURE = os.environ.get('SECURE') == "TRUE"
 else:
-    SECURE = False
+    SECURE = True
 
 # TODO
 # implement frame concatenation (opcode 0 & fin 1 -> fin 0 means more frames will come with opcode 0 till last frame indicated by fin 1)
@@ -94,6 +94,7 @@ def listen(sock):
     while True:
         print("Listening for connections 👂")
         sock.listen()
+        global conn
         conn, addr = sock.accept()
         with conn:  
             print("Connection from {} 🔌".format(addr))
@@ -113,11 +114,18 @@ def listen(sock):
 
 if SECURE:  
     # TODO do this so wss also works
-    context = ssl.create_default_context()
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    # context.options |= ssl.PROTOCOL_TLS_SERVER
+    context.options |= ssl.OP_NO_SSLv2
+    context.options |= ssl.OP_NO_SSLv3
+    # context.options |= ssl.CERT_NONE
+    # context.check_hostname = False
+    context.load_cert_chain("domain.crt", "domain.key")
+    # context.set_ciphers("")
 
-with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0) as sock:
     if SECURE:
-        with context.wrap_socket(sock, server_hostname=HOST) as ssock:
+        with context.wrap_socket(sock, server_side=True) as ssock:
             listen(ssock)
     else:
         listen(sock)
