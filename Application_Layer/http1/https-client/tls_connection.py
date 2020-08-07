@@ -1,33 +1,44 @@
 from message_decoder import Message_Decoder
+from crypto_helper import Crypto_Helper
 
 class TLS_Connection:
     def __init__(self):
         self.server_shared_key = None
         self.cryptographic_group = None
         self.client_private_key = None
+        self.client_hello_bytes = None
+        self.server_hello_bytes = None
+        self.cipher_suite = None
 
     def calculate_keys(self):
+        # 1) calculate the shared secret
+        # https://tools.ietf.org/html/rfc7748
         if self.server_shared_key is None:
             raise Exception("server_shared_key must be set to calculate the keys!")
         if self.cryptographic_group is None:
             raise Exception("cryptographic_group must be set to calculate the keys!")
-        # TODO calculate the public key based on shared_key and algorithm
-        # for x25519 we don't have to do anything
-        # for secpr1 we have to strip the first byte and calculate using x and y
-        server_public_key = self.server_shared_key
-
+        # calculate the Server Public Key based on the received Shared Key and Cryptographic Group
+        self.server_public_key = Crypto_Helper.get_public_key_from_shared_key(self.server_shared_key, self.cryptographic_group)
         if self.client_private_key is None:
             raise Exception("client_private_key must be set to calculate the keys!")
-        client_private_key = self.client_private_key
+        self.shared_secret = Crypto_Helper.get_shared_secret(self.client_private_key, self.server_public_key, self.cryptographic_group)
 
-        # SHA256 hash of ClientHello and ServerHello
+        # 2) hash the Client Hello and Server Hello
+        if self.client_hello_bytes is None:
+            raise Exception("client_hello_bytes must be set to calculate the keys!")
+        if self.server_hello_bytes is None:
+            raise Exception("server_hello_bytes must be set to calculate the keys!")
+        client_hello_bytes = self.client_hello_bytes
+        server_hello_bytes = self.server_hello_bytes
+        if self.cipher_suite is None:
+            raise Exception("cipher_suite must be set to calculate the keys!")
+        cipher_suite = self.cipher_suite
 
-        # First, the client finds the shared secret, which is the result of the key exchange that allows the client and server to agree on a number. 
-        # The client multiplies the server's public key with the client's private key using the curve25519() algorithm. 
-        # Since this is the same shared secret calculated by the server in "Server Handshake Keys Calc", 
-        # the rest of the calculation is identical and the same values are found.
+        transcript_hash = Crypto_Helper.hash_transcript(cipher_suite, client_hello_bytes, server_hello_bytes)
 
-
+        # 3) Key derivation and checking using specified cipher     
+        client_handshake_key, server_handshake_key, client_handshake_iv, server_handshake_iv = Crypto_Helper.derive_keys(cipher_suite, self.shared_secret, transcript_hash)
+ 
     def decode(self, message):
         private_key = self.client_private_key
         public_key = self.server_public_key

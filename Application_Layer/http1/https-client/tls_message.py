@@ -3,9 +3,16 @@ import math
 from tls_message_parser import TLS_Message_Parser
 
 # Note: this TLS message class is constructed to work with TLS 1.3 only, which means some values are hardcoded to make this a TLS 1.3 message
+# more info on: https://tools.ietf.org/html/rfc8446
 class TLS_Message:
     ENDINESS = 'big'
 
+    # Use 'openssl ciphers -V' for more info about ciphers and which one can be used for TLS 1.3
+    # Cipher suite names follow the naming convention:
+    # CipherSuite TLS_AEAD_HASH
+    #   - TLS = The string "TLS"  
+    #   - AEAD = The AEAD algorithm used for record protection
+    #   - HASH = The hash algorithm used with HKDF   
     AVAILABLE_CIPHERS = {
         "TLS_AES_128_GCM_SHA256": b"\x13\x01",
         "TLS_AES_256_GCM_SHA384": b"\x13\x02",
@@ -130,18 +137,27 @@ class TLS_Message:
 
     @staticmethod
     def receive(socket):
+        # also track and return the raw_message since we might need this later
+        raw_message = b""
         tls_message = TLS_Message()
 
         # receive the message type
-        tls_message.message_type = socket.recv(1)
+        data = socket.recv(1)
+        tls_message.message_type = data
+        raw_message += data
 
         # receive the message TLS version
-        tls_message.message_version = socket.recv(2)
+        data = socket.recv(2)
+        tls_message.message_version = data
+        raw_message += data
 
         # receive the length of message and the message itself using this length
-        record_length = int.from_bytes(socket.recv(2), TLS_Message.ENDINESS)
+        data = socket.recv(2)
+        record_length = int.from_bytes(data, TLS_Message.ENDINESS)
+        raw_message += data
         raw_content = socket.recv(record_length)
-        print(raw_content)
+        raw_message += raw_content
+        print(raw_message)
 
         # Change Cipher Spec (x14/20) 
         if tls_message.message_type == b"\x14":
@@ -159,7 +175,7 @@ class TLS_Message:
             tls_message.application_data = raw_content
         else:
             raise Exception("Can't handle this message type yet")
-        return tls_message
+        return tls_message, raw_message
         
     def generate_random(self):
         # generate random number which is 32 bytes long
