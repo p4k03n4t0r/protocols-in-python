@@ -5,6 +5,9 @@ import socket
 from crypto_helper import Crypto_Helper
 from tls_connection import TLS_Connection
 
+# example handshakes:
+# https://tools.ietf.org/html/rfc8448
+
 HOST = 'github.com'
 # HOST = 'example.com'
 PORT = 443

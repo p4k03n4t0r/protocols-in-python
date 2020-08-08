@@ -23,7 +23,7 @@ class TLS_Connection:
             raise Exception("client_private_key must be set to calculate the keys!")
         self.shared_secret = Crypto_Helper.get_shared_secret(self.client_private_key, self.server_public_key, self.cryptographic_group)
 
-        # 2) hash the Client Hello and Server Hello
+        # 2) calculate hash transcript of the handshake so far
         if self.client_hello_bytes is None:
             raise Exception("client_hello_bytes must be set to calculate the keys!")
         if self.server_hello_bytes is None:
@@ -36,7 +36,8 @@ class TLS_Connection:
 
         transcript_hash = Crypto_Helper.hash_transcript(cipher_suite, client_hello_bytes, server_hello_bytes)
 
-        # 3) Key derivation and checking using specified cipher     
+        # 3) Key derivation and checking using specified cipher 
+        # gives back 4 keys back based on the shared secret, these 4 keys will be used to encrypt/decrypt messages to/from the server 
         client_handshake_key, server_handshake_key, client_handshake_iv, server_handshake_iv = Crypto_Helper.derive_keys(cipher_suite, self.shared_secret, transcript_hash)
  
     def decode(self, message):

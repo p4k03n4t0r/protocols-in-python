@@ -6,10 +6,8 @@ from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X
 from cryptography.hazmat.primitives.asymmetric.x448 import X448PrivateKey, X448PublicKey
 from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, PublicFormat, NoEncryption 
 from cryptography.hazmat.primitives.asymmetric.ec import generate_private_key, derive_private_key, SECP256R1, SECP384R1, SECP521R1, ECDH
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF, HKDFExpand
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
-import hashlib
 import os
 
 class Crypto_Helper:
@@ -138,16 +136,15 @@ class Crypto_Helper:
         # only one cipher suite doesn't use SHA256, all others use SHA256
         # TLS_AES_256_GCM_SHA384 (x13 x02)
         if cipher_suite == b"\x13\x02":
-            hasher = hashlib.sha384()
+            digest = hashes.Hash(hashes.SHA384(), backend=default_backend())
         else:
-            hasher = hashlib.sha256()
+            digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
 
         # TODO maybe already concat all handshake messages in a 'transcript_raw' property and add method transcript_hash() (https://tools.ietf.org/html/rfc8446#section-4.4.1)
-        # we concat the handshake messages (Client Hello, Server Hello)
-        # while we skip the record part of the Hello's (first five bytes)
+        # we concat the handshake messages (Client Hello, Server Hello) while we skip the record part of the Hello's (first five bytes)
         concat = client_hello_bytes[5:len(client_hello_bytes)] + server_hello_bytes[5:len(server_hello_bytes)]
-        hasher.update(concat)
-        return hasher.digest()
+        digest.update(concat)
+        return digest.finalize()
 
     @staticmethod
     def derive_keys(cipher_suite, shared_secret, transcript_hash):
@@ -156,6 +153,7 @@ class Crypto_Helper:
         if cipher_suite != b"\x13\x01":
             raise Exception("Only cipher suite TLS_AES_128_GCM_SHA256 is supported for now") 
 
+        # https://www.coursera.org/lecture/crypto/key-derivation-A1ETP
         # 1) take the input keying material and "extract" from it a fixed-length pseudorandom key K  
         # HKDF-Extract(salt, IKM) -> PRK
         # Options:
@@ -197,20 +195,7 @@ class Crypto_Helper:
         # (where the constant concatenated to the end of each T(n) is a
         # single octet.)
 
-        empty_hash = hashlib.sha256().digest()
-        early_secret = 0
-
-        hkdf = HKDFExpand(
-            algorithm=hashes.SHA256(),
-            length=32,
-            info=info,
-            backend=backend
-        )
-        key = hkdf.derive(key_material)
-
-        # hexprk          label       hexcontext      length
-        # $early_secret   "derived"   $empty_hash     32
-
+        # 1) we add some randomization
         # early_secret = HKDF-Extract(
         #     salt=00,
         #     key=00...)
@@ -220,6 +205,18 @@ class Crypto_Helper:
         #     label = "derived",
         #     context = empty_hash,
         #     len = 32)
+        length = 32
+
+        hkdf = HKDF(
+            algorithm=hashes.SHA256(),
+            length=length,
+            salt=b"\x00",
+            info=b"derived",
+            backend=default_backend()
+        )
+        derived_secret = hkdf.derive(b"\x00"*32)
+
+        # 2) derive traffic secrets
         # handshake_secret = HKDF-Extract(
         #     salt = derived_secret,
         #     key = shared_secret)
@@ -228,26 +225,58 @@ class Crypto_Helper:
         #     label = "c hs traffic",
         #     context = hello_hash,
         #     len = 32)
+        hkdf = HKDF(
+            algorithm=hashes.SHA256(),
+            length=length,
+            salt=derived_secret,
+            info=b"c hs traffic",
+            backend=default_backend()
+        )
+        client_handshake_traffic_secret = hkdf.derive(shared_secret)
+
+        # handshake_secret = HKDF-Extract(
+        #     salt = derived_secret,
+        #     key = shared_secret)
         # server_handshake_traffic_secret = HKDF-Expand-Label(
         #     key = handshake_secret,
         #     label = "s hs traffic",
         #     context = hello_hash,
         #     len = 32)
+
+
+
+
+
+        # handshake_secret = HKDF-Extract(
+        #     salt = derived_secret,
+        #     key = shared_secret)
         # client_handshake_key = HKDF-Expand-Label(
         #     key = client_handshake_traffic_secret,
         #     label = "key",
         #     context = "",
         #     len = 16)
+        
+        # handshake_secret = HKDF-Extract(
+        #     salt = derived_secret,
+        #     key = shared_secret)
         # server_handshake_key = HKDF-Expand-Label(
         #     key = server_handshake_traffic_secret,
         #     label = "key",
         #     context = "",
         #     len = 16)
+
+        # handshake_secret = HKDF-Extract(
+        #     salt = derived_secret,
+        #     key = shared_secret)
         # client_handshake_iv = HKDF-Expand-Label(
         #     key = client_handshake_traffic_secret,
         #     label = "iv",
         #     context = "",
         #     len = 12)
+
+        # handshake_secret = HKDF-Extract(
+        #     salt = derived_secret,
+        #     key = shared_secret)
         # server_handshake_iv = HKDF-Expand-Label(
         #     key = server_handshake_traffic_secret,
         #     label = "iv",
