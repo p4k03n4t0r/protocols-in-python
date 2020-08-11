@@ -6,9 +6,10 @@ from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X
 from cryptography.hazmat.primitives.asymmetric.x448 import X448PrivateKey, X448PublicKey
 from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, PublicFormat, NoEncryption 
 from cryptography.hazmat.primitives.asymmetric.ec import generate_private_key, derive_private_key, SECP256R1, SECP384R1, SECP521R1, ECDH
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
-import os
+from hkdf_helper import Hkdf_Helper
+
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 class Crypto_Helper:
     ENDINESS = 'big'
@@ -153,133 +154,24 @@ class Crypto_Helper:
         if cipher_suite != b"\x13\x01":
             raise Exception("Only cipher suite TLS_AES_128_GCM_SHA256 is supported for now") 
 
-        # https://www.coursera.org/lecture/crypto/key-derivation-A1ETP
-        # 1) take the input keying material and "extract" from it a fixed-length pseudorandom key K  
-        # HKDF-Extract(salt, IKM) -> PRK
-        # Options:
-        #     Hash     a hash function; HashLen denotes the length of the
-        #             hash function output in octets
-        # Inputs:
-        #     salt     optional salt value (a non-secret random value);
-        #             if not provided, it is set to a string of HashLen zeros.
-        #     IKM      input keying material
-        # Output:
-        #     PRK      a pseudorandom key (of HashLen octets)
-        # The output PRK is calculated as follows:
-        # PRK = HMAC-Hash(salt, IKM)
+        empty_hash = hashes.Hash(hashes.SHA256(), default_backend()).finalize()
+        derived_secret = Hkdf_Helper.hkdf_extract_expand_label(b"\x00"*32, b"\x00"*32, b"derived", empty_hash)
 
-        # 2) "expand" the key K into several additional pseudorandom keys (the output of the KDF)
-        # HKDF-Expand(PRK, info, L) -> OKM
-        # Options:
-        #     Hash     a hash function; HashLen denotes the length of the
-        #             hash function output in octets
-        # Inputs:
-        #     PRK      a pseudorandom key of at least HashLen octets
-        #             (usually, the output from the extract step)
-        #     info     optional context and application specific information
-        #             (can be a zero-length string)
-        #     L        length of output keying material in octets
-        #             (<= 255*HashLen)
-        # Output:
-        #     OKM      output keying material (of L octets)
-        # The output OKM is calculated as follows:
-        # N = ceil(L/HashLen)
-        # T = T(1) | T(2) | T(3) | ... | T(N)
-        # OKM = first L octets of T
-        # where:
-        # T(0) = empty string (zero length)
-        # T(1) = HMAC-Hash(PRK, T(0) | info | 0x01)
-        # T(2) = HMAC-Hash(PRK, T(1) | info | 0x02)
-        # T(3) = HMAC-Hash(PRK, T(2) | info | 0x03)
-        # ...
-        # (where the constant concatenated to the end of each T(n) is a
-        # single octet.)
+        handshake_secret = Hkdf_Helper.hdkf_extract(derived_secret, shared_secret)
+        client_handshake_traffic_secret = Hkdf_Helper.hkdf_expand_label(handshake_secret, b"c hs traffic", transcript_hash)
+        server_handshake_traffic_secret = Hkdf_Helper.hkdf_expand_label(handshake_secret, b"s hs traffic", transcript_hash)
 
-        # 1) we add some randomization
-        # early_secret = HKDF-Extract(
-        #     salt=00,
-        #     key=00...)
-        # empty_hash = SHA256("")
-        # derived_secret = HKDF-Expand-Label(
-        #     key = early_secret,
-        #     label = "derived",
-        #     context = empty_hash,
-        #     len = 32)
-        length = 32
+        client_handshake_key = Hkdf_Helper.hkdf_expand_label(client_handshake_traffic_secret, b"key", b"", 16)
+        client_handshake_iv = Hkdf_Helper.hkdf_expand_label(client_handshake_traffic_secret, b"iv", b"", 12)
+        server_handshake_key = Hkdf_Helper.hkdf_expand_label(server_handshake_traffic_secret, b"key", b"", 16)
+        server_handshake_iv = Hkdf_Helper.hkdf_expand_label(server_handshake_traffic_secret, b"iv", b"", 12)
 
-        hkdf = HKDF(
-            algorithm=hashes.SHA256(),
-            length=length,
-            salt=b"\x00",
-            info=b"derived",
-            backend=default_backend()
-        )
-        derived_secret = hkdf.derive(b"\x00"*32)
-
-        # 2) derive traffic secrets
-        # handshake_secret = HKDF-Extract(
-        #     salt = derived_secret,
-        #     key = shared_secret)
-        # client_handshake_traffic_secret = HKDF-Expand-Label(
-        #     key = handshake_secret,
-        #     label = "c hs traffic",
-        #     context = hello_hash,
-        #     len = 32)
-        hkdf = HKDF(
-            algorithm=hashes.SHA256(),
-            length=length,
-            salt=derived_secret,
-            info=b"c hs traffic",
-            backend=default_backend()
-        )
-        client_handshake_traffic_secret = hkdf.derive(shared_secret)
-
-        # handshake_secret = HKDF-Extract(
-        #     salt = derived_secret,
-        #     key = shared_secret)
-        # server_handshake_traffic_secret = HKDF-Expand-Label(
-        #     key = handshake_secret,
-        #     label = "s hs traffic",
-        #     context = hello_hash,
-        #     len = 32)
-
-
-
-
-
-        # handshake_secret = HKDF-Extract(
-        #     salt = derived_secret,
-        #     key = shared_secret)
-        # client_handshake_key = HKDF-Expand-Label(
-        #     key = client_handshake_traffic_secret,
-        #     label = "key",
-        #     context = "",
-        #     len = 16)
-        
-        # handshake_secret = HKDF-Extract(
-        #     salt = derived_secret,
-        #     key = shared_secret)
-        # server_handshake_key = HKDF-Expand-Label(
-        #     key = server_handshake_traffic_secret,
-        #     label = "key",
-        #     context = "",
-        #     len = 16)
-
-        # handshake_secret = HKDF-Extract(
-        #     salt = derived_secret,
-        #     key = shared_secret)
-        # client_handshake_iv = HKDF-Expand-Label(
-        #     key = client_handshake_traffic_secret,
-        #     label = "iv",
-        #     context = "",
-        #     len = 12)
-
-        # handshake_secret = HKDF-Extract(
-        #     salt = derived_secret,
-        #     key = shared_secret)
-        # server_handshake_iv = HKDF-Expand-Label(
-        #     key = server_handshake_traffic_secret,
-        #     label = "iv",
-        #     context = "",
-        #     len = 12)
         return client_handshake_key, server_handshake_key, client_handshake_iv, server_handshake_iv
+
+    @staticmethod
+    def decrypt_message(message, additional_data, server_handshake_key, server_handshake_iv):
+        cipher = Cipher(algorithms.AES(server_handshake_key), modes.GCM(server_handshake_iv, tag=additional_data), backend=default_backend())
+        decryptor = cipher.decryptor()
+        decryptor.update(message)
+        decrypted_message = decryptor.finalize()
+        return decrypted_message

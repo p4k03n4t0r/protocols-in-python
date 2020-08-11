@@ -1,4 +1,3 @@
-from message_decoder import Message_Decoder
 from crypto_helper import Crypto_Helper
 
 class TLS_Connection:
@@ -38,16 +37,20 @@ class TLS_Connection:
 
         # 3) Key derivation and checking using specified cipher 
         # gives back 4 keys back based on the shared secret, these 4 keys will be used to encrypt/decrypt messages to/from the server 
-        client_handshake_key, server_handshake_key, client_handshake_iv, server_handshake_iv = Crypto_Helper.derive_keys(cipher_suite, self.shared_secret, transcript_hash)
- 
-    def decode(self, message):
-        private_key = self.client_private_key
-        public_key = self.server_public_key
-        # x25519 (x00 x1d)
-        if self.cryptographic_group == b"\x00\x1d":
-            return Message_Decoder.decode_x25519(message, private_key, public_key)
-        # secp256r1 (x00 x17)
-        if self.cryptographic_group == b"\x00\x17":
-            return Message_Decoder.decode_secp256r1(message, private_key, public_key)
-        else:
-            raise Exception("Can't decode this cryptographic group yet")
+        self.client_handshake_key, self.server_handshake_key, self.client_handshake_iv, self.server_handshake_iv = Crypto_Helper.derive_keys(cipher_suite, self.shared_secret, transcript_hash)
+        print(b"client_handshake_key: " + self.client_handshake_key)
+        print(b"server_handshake_key: " + self.server_handshake_key)
+        print(b"client_handshake_iv: " + self.client_handshake_iv)
+        print(b"server_handshake_iv: " + self.server_handshake_iv)
+
+    def decrypt_message(self, message, additional_data):
+        # for now only support TLS_AES_128_GCM_SHA256
+        # TLS_AES_128_GCM_SHA256 (x13 x01)
+        if self.cipher_suite != b"\x13\x01":
+            raise Exception("Only cipher suite TLS_AES_128_GCM_SHA256 is supported for now") 
+
+        # use the key/iv from the calculate_keys() function
+        server_handshake_key = self.server_handshake_key
+        server_handshake_iv = self.server_handshake_iv
+        decrypted_message = Crypto_Helper.decrypt_message(message, additional_data, server_handshake_key, server_handshake_iv)
+        return decrypted_message

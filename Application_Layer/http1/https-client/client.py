@@ -14,6 +14,7 @@ PORT = 443
 
 tls_connection = TLS_Connection()
 
+# follows the flow described in: https://tools.ietf.org/html/rfc8446#section-2
 with socket.create_connection((HOST, PORT)) as sock:
     # construct a Client Hello handshake message
     # TLS 1.0 protocol version for interoperability with earlier implementations
@@ -95,8 +96,7 @@ with socket.create_connection((HOST, PORT)) as sock:
                 # -> this might be followed by a change cipher spec (but this doesn't add anything)
                 # -> we can no calculate the keys with the response from the server
                 tls_connection.calculate_keys()
-                # -> all following messages afterwards are application data message (x17)
-                # -> client can also send application data messages (x17) to the server
+                # -> all following messages afterwards are application data messages (x17) which will use the calculated keys to encrypt/decrypt 
             else:
                 print("Hello_Retry_Request")
                 # -> client must response with a new Client_Hello with same session id, but changed key_share based on content of Hello_Retry_Request
@@ -109,7 +109,7 @@ with socket.create_connection((HOST, PORT)) as sock:
                 break
         # application_data (x17/23)
         if server_response.message_type == b"\x17":
-            # second
             print("Application Data")
-            msg = tls_connection.decode(server_response.application_data)
-            print(msg)
+            message = tls_connection.decrypt_message(server_response.application_data, server_response.additional_data)
+            print(message)
+message

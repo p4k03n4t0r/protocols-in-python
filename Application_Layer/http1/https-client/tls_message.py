@@ -173,6 +173,10 @@ class TLS_Message:
         elif tls_message.message_type == b"\x17":
             # the whole content is the application data
             tls_message.application_data = raw_content
+            # additional data is a combination of the record fields of this package
+            # see https://tools.ietf.org/html/rfc8446#section-5.2
+            xor_result = int.from_bytes(tls_message.message_type, TLS_Message.ENDINESS) | int.from_bytes( tls_message.message_version, TLS_Message.ENDINESS) | record_length
+            tls_message.additional_data = xor_result.to_bytes(16, TLS_Message.ENDINESS)
         else:
             raise Exception("Can't handle this message type yet")
         return tls_message, raw_message

@@ -10,8 +10,6 @@ hello_hash = bytes.fromhex("da75ce1139ac80dae4044da932350cf65c97ccc9e33f1e6f7d2d
 shared_secret = bytes.fromhex("df4a291baa1eb7cfa6934b29b474baad2697e29f1f920dcc77c8a0a088447624")
 zero_salt = bytes.fromhex("0000000000000000000000000000000000000000000000000000000000000000")
 
-buffer = lambda x: x
-
 # https://tools.ietf.org/html/rfc5869
 def hdkf_extract(salt, input_key_material, hash_algorithm=hashlib.sha256):
     return hmac.new(salt, input_key_material, hash_algorithm).digest()
@@ -25,7 +23,7 @@ def hkdf_expand(pseudo_random_key, info, length=32, hash_algorithm=hashlib.sha25
 	okm = b""
 	output_block = b""
 	for counter in range(blocks_needed):
-		output_block = hmac.new(pseudo_random_key, buffer(output_block + info + bytearray((counter + 1,))), hash_algorithm).digest()
+		output_block = hmac.new(pseudo_random_key, output_block + info + bytearray((counter + 1,)), hash_algorithm).digest()
 		okm += output_block
 	return okm[:length]
 
