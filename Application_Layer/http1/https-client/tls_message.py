@@ -142,19 +142,19 @@ class TLS_Message:
         tls_message = TLS_Message()
 
         # receive the message type
-        data = socket.recv(1)
-        tls_message.message_type = data
-        raw_message += data
+        message_type_bytes = socket.recv(1)
+        tls_message.message_type = message_type_bytes
+        raw_message += message_type_bytes
 
         # receive the message TLS version
-        data = socket.recv(2)
-        tls_message.message_version = data
-        raw_message += data
+        message_version_bytes = socket.recv(2)
+        tls_message.message_version = message_version_bytes
+        raw_message += message_version_bytes
 
         # receive the length of message and the message itself using this length
-        data = socket.recv(2)
-        record_length = int.from_bytes(data, TLS_Message.ENDINESS)
-        raw_message += data
+        record_length_bytes = socket.recv(2)
+        record_length = int.from_bytes(record_length_bytes, TLS_Message.ENDINESS)
+        raw_message += record_length_bytes
         raw_content = socket.recv(record_length)
         raw_message += raw_content
         print(raw_message)
@@ -174,9 +174,8 @@ class TLS_Message:
             # the whole content is the application data
             tls_message.application_data = raw_content
             # additional data is a combination of the record fields of this package
-            # see https://tools.ietf.org/html/rfc8446#section-5.2
-            xor_result = int.from_bytes(tls_message.message_type, TLS_Message.ENDINESS) | int.from_bytes( tls_message.message_version, TLS_Message.ENDINESS) | record_length
-            tls_message.additional_data = xor_result.to_bytes(16, TLS_Message.ENDINESS)
+            # see https://tools.ietf.org/html/rfc8446#section-5.2 (the || mean concating not a logical OR operation)
+            tls_message.additional_data = message_type_bytes + message_version_bytes + record_length_bytes
         else:
             raise Exception("Can't handle this message type yet")
         return tls_message, raw_message

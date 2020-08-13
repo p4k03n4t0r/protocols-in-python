@@ -9,7 +9,10 @@ from cryptography.hazmat.primitives.asymmetric.ec import generate_private_key, d
 from cryptography.hazmat.primitives import hashes
 from hkdf_helper import Hkdf_Helper
 
+# TODO remove not used
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from Crypto.Cipher import AES
 
 class Crypto_Helper:
     ENDINESS = 'big'
@@ -133,7 +136,7 @@ class Crypto_Helper:
         return private_key.exchange(ECDH(), public_key)
 
     @staticmethod
-    def hash_transcript(cipher_suite, client_hello_bytes, server_hello_bytes):
+    def hash_transcript(cipher_suite, transcript_bytes):
         # only one cipher suite doesn't use SHA256, all others use SHA256
         # TLS_AES_256_GCM_SHA384 (x13 x02)
         if cipher_suite == b"\x13\x02":
@@ -141,9 +144,13 @@ class Crypto_Helper:
         else:
             digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
 
-        # TODO maybe already concat all handshake messages in a 'transcript_raw' property and add method transcript_hash() (https://tools.ietf.org/html/rfc8446#section-4.4.1)
-        # we concat the handshake messages (Client Hello, Server Hello) while we skip the record part of the Hello's (first five bytes)
-        concat = client_hello_bytes[5:len(client_hello_bytes)] + server_hello_bytes[5:len(server_hello_bytes)]
+        # we concat the handshake messages while we skip the record part of them (first five bytes)
+        # see https://tools.ietf.org/html/rfc8446#section-4.4.1
+        # TODO handle HelloRetryRequests properly
+        concat = b""
+        for i in range(len(transcript_bytes)):
+            message = transcript_bytes[i]
+            concat += message[5:len(message)]
         digest.update(concat)
         return digest.finalize()
 
@@ -169,9 +176,37 @@ class Crypto_Helper:
         return client_handshake_key, server_handshake_key, client_handshake_iv, server_handshake_iv
 
     @staticmethod
-    def decrypt_message(message, additional_data, server_handshake_key, server_handshake_iv):
-        cipher = Cipher(algorithms.AES(server_handshake_key), modes.GCM(server_handshake_iv, tag=additional_data), backend=default_backend())
-        decryptor = cipher.decryptor()
-        decryptor.update(message)
-        decrypted_message = decryptor.finalize()
-        return decrypted_message
+    def aead_decrypt(ciphertext, additional_data, server_handshake_key, server_handshake_iv):
+        # https://github.com/golang/go/blob/13ccce549c6051b70127b5d3620a2bb4762b2e55/src/crypto/tls/conn.go#L339
+        
+        # https://bensmyth.com/files/Smyth19-TLS-tutorial.pdf (page 31)
+        # Params:
+        # write_key         either client_write_key or server_write_key
+        # nonce             derived from a sequence number XORed with client_write_iv or server_write_iv
+        #                   The nonce used by the negotiated AEAD algorithm is derived from a 64-bit
+        #                   sequence number, which is initialised as 0, incremented by one after reading or writing a record, and
+        #                   reset to 0 whenever the key is changed.
+        # ciphertext        just the ciphertext
+        # additional_data   record header (TLSCiphertext.opaque_type || TLSCiphertext.legacy_record_version || TLSCiphertext.length)
+        # Result:
+        # plaintext         TLSPlaintext.fragment appended with type TLSPlaintext.type and field zeros, which contains
+        #                   an arbitrary-length run of zero-valued bytes and is used to pad a TLS record (the resulting plaintext
+        #                   is known as record TLSInnerPlaintext).
+        # AEAD-Decrypt(write_key, nonce, additional_data, TLSCiphertext.encrypted_record),
+        # which outputs a plaintext or terminates with an error. The endpoint aborts with a bad_record_mac alert in the event of such an error.
+
+        # from https://cryptography.io/en/latest/hazmat/primitives/aead/
+        # aesgcm = AESGCM(server_handshake_key)
+        # return aesgcm.decrypt(server_handshake_iv, ciphertext, additional_data)
+
+        # from https://cryptography.io/en/latest/hazmat/primitives/symmetric-encryption/#cryptography.hazmat.primitives.ciphers.modes.GCM
+        tag = ciphertext[len(ciphertext)-16:]
+        ciphertext = ciphertext[:len(ciphertext)-16]
+        decryptor = Cipher(
+            algorithms.AES(server_handshake_key),
+            modes.GCM(server_handshake_iv, tag),
+            backend=default_backend()
+        ).decryptor()
+        decryptor.authenticate_additional_data(additional_data)
+        msg = decryptor.update(ciphertext) + decryptor.finalize()
+        return msg

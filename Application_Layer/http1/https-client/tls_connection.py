@@ -1,13 +1,54 @@
 from crypto_helper import Crypto_Helper
+from tls_message import TLS_Message
+from tls_message_packer import TLS_Message_Packer
 
 class TLS_Connection:
-    def __init__(self):
+    def __init__(self, socket):
+        self.socket = socket
+        # init some values to None
         self.server_shared_key = None
         self.cryptographic_group = None
         self.client_private_key = None
-        self.client_hello_bytes = None
-        self.server_hello_bytes = None
+        self.transcript_bytes = []
         self.cipher_suite = None
+        self.handshake_done = False
+
+    def send(self, message, add_to_transcript = False):
+        if self.handshake_done:
+            # encrypt & send
+            self.counter += 1
+            # raise Exception("Can't send encrypted messages yet")
+
+        message_bytes = TLS_Message_Packer.pack(message)
+        # if needed we append the bytes of the message to the transcript of this handshake
+        if add_to_transcript:
+            self.transcript_bytes.append(message_bytes)
+        print("SENDING: 📤")
+        print(message_bytes)
+        self.socket.send(message_bytes)
+
+    def receive(self):
+        print("RECEIVING: 📥")
+        server_response, server_response_raw = TLS_Message.receive(self.socket)
+        print(server_response_raw)
+        if self.session != server_response.session:
+            raise Exception("Session id doesn't match!")
+
+        # alert (x15/21)
+        if server_response.message_type == b"\x15":
+            print("Alert")
+            # parse back the binary value to the string value so we can print it 
+            level_message = list(TLS_Message.ALERT_LEVEL.keys())[list(TLS_Message.ALERT_LEVEL.values()).index(server_response.level.to_bytes(1, TLS_Message.ENDINESS))]
+            description_message = list(TLS_Message.ALERT_DESCRIPTION.keys())[list(TLS_Message.ALERT_DESCRIPTION.values()).index(server_response.description.to_bytes(1, TLS_Message.ENDINESS))]
+            print("Level: {}, Description: {}".format(level_message, description_message))
+            raise Exception("Alert received, halting handshake")
+   
+        # application_data (x17/23)
+        if server_response.message_type == b"\x17":
+            server_response.application_data = self.decrypt_response(server_response.application_data, server_response.additional_data)
+            self.counter += 1
+        
+        return server_response, server_response_raw
 
     def calculate_keys(self):
         # 1) calculate the shared secret
@@ -23,17 +64,14 @@ class TLS_Connection:
         self.shared_secret = Crypto_Helper.get_shared_secret(self.client_private_key, self.server_public_key, self.cryptographic_group)
 
         # 2) calculate hash transcript of the handshake so far
-        if self.client_hello_bytes is None:
-            raise Exception("client_hello_bytes must be set to calculate the keys!")
-        if self.server_hello_bytes is None:
-            raise Exception("server_hello_bytes must be set to calculate the keys!")
-        client_hello_bytes = self.client_hello_bytes
-        server_hello_bytes = self.server_hello_bytes
+        if len(self.transcript_bytes) == 0:
+            raise Exception("length of the transcript should be longer than 0")
+        transcript_bytes = self.transcript_bytes
         if self.cipher_suite is None:
             raise Exception("cipher_suite must be set to calculate the keys!")
         cipher_suite = self.cipher_suite
 
-        transcript_hash = Crypto_Helper.hash_transcript(cipher_suite, client_hello_bytes, server_hello_bytes)
+        transcript_hash = Crypto_Helper.hash_transcript(cipher_suite, transcript_bytes)
 
         # 3) Key derivation and checking using specified cipher 
         # gives back 4 keys back based on the shared secret, these 4 keys will be used to encrypt/decrypt messages to/from the server 
@@ -43,7 +81,12 @@ class TLS_Connection:
         print(b"client_handshake_iv: " + self.client_handshake_iv)
         print(b"server_handshake_iv: " + self.server_handshake_iv)
 
-    def decrypt_message(self, message, additional_data):
+        # we have the keys so the handshake is done, all messages afterwards will be encrypted
+        self.handshake_done = True
+        # we keep a counter, which must be incremented for each message send and received, needed for encrypting/decrypting messages
+        self.counter = 0
+
+    def decrypt_response(self, message, additional_data):
         # for now only support TLS_AES_128_GCM_SHA256
         # TLS_AES_128_GCM_SHA256 (x13 x01)
         if self.cipher_suite != b"\x13\x01":
@@ -52,5 +95,5 @@ class TLS_Connection:
         # use the key/iv from the calculate_keys() function
         server_handshake_key = self.server_handshake_key
         server_handshake_iv = self.server_handshake_iv
-        decrypted_message = Crypto_Helper.decrypt_message(message, additional_data, server_handshake_key, server_handshake_iv)
+        decrypted_message = Crypto_Helper.aead_decrypt(message, additional_data, server_handshake_key, server_handshake_iv)
         return decrypted_message
