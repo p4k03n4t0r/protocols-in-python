@@ -83,6 +83,7 @@ class TLS_Message_Packer:
 
     @staticmethod
     def pack_extensions_header(handshake):
+        # for all extensions see https://tools.ietf.org/html/rfc8446#section-4.2
         # append extensions when provided
         # the first two bytes indicate the type of extension
         extensions_header = b""

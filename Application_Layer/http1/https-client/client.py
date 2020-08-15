@@ -37,8 +37,8 @@ def wrap_in_tls_13(socket, host):
     client_hello_message.add_signature_hash_algorithm("rsa_pss_rsae_sha512")
     client_hello_message.add_supported_version("tls1.3")
     # TODO for now we only support sending a single key per Client Hello, but TLS1.3 also allows sending multiple and the server choosing one of them
-    # cryptographic_group = "x25519"
-    cryptographic_group = "secp256r1"
+    cryptographic_group = "x25519"
+    # cryptographic_group = "secp256r1"
     client_hello_message.add_supported_group(cryptographic_group)
     client_private_key, client_public_key, client_key_share = Crypto_Helper.generate_client_keys(cryptographic_group)
     tls_connection.client_public_key = client_public_key
@@ -57,7 +57,7 @@ def wrap_in_tls_13(socket, host):
     # if the response is a HelloRetryRequest this means the server is able to find an acceptable set of parameters but the ClientHello does not contain sufficient information to proceed with the handshake
     # it's kinda vague, but if the server handshake message doesn't contain a key exchange it's probably a Hello_Retry_Request
     if server_response.key_exchange is not None:
-        print("Server_Hello")
+        print("Received Server_Hello")
         # retrieve information about the connection from the Server_Hello
         tls_connection.server_shared_key = server_response.key_exchange
         # the crypthographic group(curve) to use
@@ -73,7 +73,7 @@ def wrap_in_tls_13(socket, host):
         tls_connection.calculate_keys()
         # -> all following messages afterwards are application data messages (x17) which will use the calculated keys to encrypt/decrypt 
     else:
-        print("Hello_Retry_Request")
+        print("Received Hello_Retry_Request")
         # -> client must response with a new Client_Hello with same session id, but changed key_share based on content of Hello_Retry_Request
         # (this probably means generating a new key with a different algorithm)
         # -> next response should be a Server_Hello message
@@ -97,6 +97,16 @@ def wrap_in_tls_13(socket, host):
 
 
     # STEP 5) We receive some application data
+    # TODO what is this data? idk... maybe alpnProtocol (GO client receives an empty string)
+    # see https://tools.ietf.org/html/rfc8446#section-4.3.1
+    server_response, server_response_raw = tls_connection.receive()
+    # application_data (x17/23)
+    if server_response.message_type != b"\x17":
+        raise Exception("Expected an Application Data, but got {}".format(server_response.message_type))
+    print(server_response)
+
+
+    # STEP 6) We receive the certificate
     server_response, server_response_raw = tls_connection.receive()
     # application_data (x17/23)
     if server_response.message_type != b"\x17":

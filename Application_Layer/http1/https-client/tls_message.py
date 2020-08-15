@@ -157,7 +157,6 @@ class TLS_Message:
         raw_message += record_length_bytes
         raw_content = socket.recv(record_length)
         raw_message += raw_content
-        print(raw_message)
 
         # Change Cipher Spec (x14/20) 
         if tls_message.message_type == b"\x14":
@@ -165,10 +164,10 @@ class TLS_Message:
             pass
         # Alert (x15/21)
         elif tls_message.message_type == b"\x15":
-            TLS_Message_Parser.parse_alert(tls_message, raw_content)
+            TLS_Message_Parser.parse_alert_content(tls_message, raw_content)
         # Handshake (x16/22)
         elif tls_message.message_type == b"\x16":
-            TLS_Message_Parser.parse_handshake(tls_message, raw_content)
+            TLS_Message_Parser.parse_handshake_content(tls_message, raw_content)
         # Application Data (x17/23)
         elif tls_message.message_type == b"\x17":
             # the whole content is the application data

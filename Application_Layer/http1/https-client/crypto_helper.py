@@ -32,7 +32,6 @@ class Crypto_Helper:
            private_key = X448PrivateKey.generate()
         else:
             raise Exception("Unknown x curve type {}".format(x_curve_type))
-        private_key = X25519PrivateKey.generate()
         public_key = private_key.public_key()
         private_key_bytes = private_key.private_bytes(encoding=Encoding.Raw, format=PrivateFormat.Raw, encryption_algorithm=NoEncryption())
         public_key_bytes = public_key.public_bytes(encoding=Encoding.Raw, format=PublicFormat.Raw)
@@ -40,6 +39,8 @@ class Crypto_Helper:
 
     @staticmethod
     def generate_secpr1_keys(secrp1_type):
+        # TODO fix
+        raise Exception("secpXXXr1 has some bugs, the received application data can't be encrypted")
         if secrp1_type == "secp256r1":
             curve = SECP256R1()
             coordinate_byte_size = 32
@@ -176,35 +177,20 @@ class Crypto_Helper:
         return client_handshake_key, server_handshake_key, client_handshake_iv, server_handshake_iv
 
     @staticmethod
-    def aead_decrypt(ciphertext, additional_data, server_handshake_key, server_handshake_iv):
-        # https://github.com/golang/go/blob/13ccce549c6051b70127b5d3620a2bb4762b2e55/src/crypto/tls/conn.go#L339
-        
-        # https://bensmyth.com/files/Smyth19-TLS-tutorial.pdf (page 31)
-        # Params:
-        # write_key         either client_write_key or server_write_key
-        # nonce             derived from a sequence number XORed with client_write_iv or server_write_iv
-        #                   The nonce used by the negotiated AEAD algorithm is derived from a 64-bit
-        #                   sequence number, which is initialised as 0, incremented by one after reading or writing a record, and
-        #                   reset to 0 whenever the key is changed.
-        # ciphertext        just the ciphertext
-        # additional_data   record header (TLSCiphertext.opaque_type || TLSCiphertext.legacy_record_version || TLSCiphertext.length)
-        # Result:
-        # plaintext         TLSPlaintext.fragment appended with type TLSPlaintext.type and field zeros, which contains
-        #                   an arbitrary-length run of zero-valued bytes and is used to pad a TLS record (the resulting plaintext
-        #                   is known as record TLSInnerPlaintext).
-        # AEAD-Decrypt(write_key, nonce, additional_data, TLSCiphertext.encrypted_record),
-        # which outputs a plaintext or terminates with an error. The endpoint aborts with a bad_record_mac alert in the event of such an error.
-
-        # from https://cryptography.io/en/latest/hazmat/primitives/aead/
-        # aesgcm = AESGCM(server_handshake_key)
-        # return aesgcm.decrypt(server_handshake_iv, ciphertext, additional_data)
-
+    def aead_decrypt(ciphertext, additional_data, server_handshake_key, server_handshake_iv, counter):
         # from https://cryptography.io/en/latest/hazmat/primitives/symmetric-encryption/#cryptography.hazmat.primitives.ciphers.modes.GCM
+        # the tag is 16 bytes is long and appended at the end of the ciphertext, it's used to check the cipher text isn't tampered with
+        # more info https://bensmyth.com/files/Smyth19-TLS-tutorial.pdf (page 31)
+
+        # XOR the server_handshake_iv with the counter to get the iv to use
+        iv = int.from_bytes(server_handshake_iv, Crypto_Helper.ENDINESS) ^ counter
+        iv = iv.to_bytes(len(server_handshake_iv), Crypto_Helper.ENDINESS)
+
         tag = ciphertext[len(ciphertext)-16:]
         ciphertext = ciphertext[:len(ciphertext)-16]
         decryptor = Cipher(
             algorithms.AES(server_handshake_key),
-            modes.GCM(server_handshake_iv, tag),
+            modes.GCM(iv, tag),
             backend=default_backend()
         ).decryptor()
         decryptor.authenticate_additional_data(additional_data)

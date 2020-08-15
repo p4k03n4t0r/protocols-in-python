@@ -1,12 +1,13 @@
 class TLS_Message_Parser:
+    ENDINESS = 'big'
 
     @staticmethod
-    def parse_alert(tls_message, raw_handshake):
+    def parse_alert_content(tls_message, raw_handshake):
         tls_message.level = raw_handshake[0]
         tls_message.description = raw_handshake[1]
 
     @staticmethod
-    def parse_handshake(tls_message, raw_handshake):
+    def parse_handshake_content(tls_message, raw_handshake):
         i = 0
         # handshake type (Client Hello 0x01, Server Hello 0x02)
         tls_message.handshake_type = raw_handshake[i]
@@ -63,3 +64,33 @@ class TLS_Message_Parser:
                     i += 2
                     tls_message.key_exchange = raw_handshake[i:i+key_exchange_length]
                     i += key_exchange_length
+
+    @staticmethod
+    def parse_application_data(tls_message):
+        application_data = tls_message.decrypted_application_data
+        i = 0
+        while i < len(application_data):
+            application_data_type = application_data[i]
+            i += 1
+            if i == len(application_data):
+                if application_data_type == 22: # x16
+                    break
+                else:
+                    raise Exception("Application data should end with a x16 byte")
+            application_data_length = int.from_bytes(application_data[i:i+3], TLS_Message_Parser.ENDINESS) 
+            i += 3
+            application_data_content = application_data[i:i+application_data_length]
+            i += application_data_length
+
+            # for all types see crypto/tls/conn.go line 1004
+            if application_data_type == 8:
+                print("application_data_type 8 received, probably means encrypted extensions, ignoring for now")
+            elif application_data_type == 11:
+                TLS_Message_Parser.parse_cert_data(tls_message, application_data_content)
+            else: 
+                raise Exception("Unknown application data type received {}".format(application_data_type))
+
+    @staticmethod
+    def parse_cert_data(tls_message, raw_data):
+        
+        return None
