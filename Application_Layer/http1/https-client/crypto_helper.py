@@ -1,19 +1,18 @@
 # pip3 install pycryptodome
 from Crypto.PublicKey import ECC
 # pip3 install cryptography
+from cryptography import x509
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric.ec import generate_private_key, derive_private_key, SECP256R1, SECP384R1, SECP521R1, ECDH
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
 from cryptography.hazmat.primitives.asymmetric.x448 import X448PrivateKey, X448PublicKey
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, PublicFormat, NoEncryption 
-from cryptography.hazmat.primitives.asymmetric.ec import generate_private_key, derive_private_key, SECP256R1, SECP384R1, SECP521R1, ECDH
-from cryptography.hazmat.primitives import hashes
+
 from hkdf_helper import Hkdf_Helper
 
-# TODO remove not used
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from Crypto.Cipher import AES
-
+# TODO maybe split up this class into seperate crypto helpers
 class Crypto_Helper:
     ENDINESS = 'big'
 
@@ -196,3 +195,8 @@ class Crypto_Helper:
         decryptor.authenticate_additional_data(additional_data)
         msg = decryptor.update(ciphertext) + decryptor.finalize()
         return msg
+
+    @staticmethod
+    def parse_certificate(raw_certificate):
+        certificate = x509.load_der_x509_certificate(raw_certificate, default_backend())
+        return certificate

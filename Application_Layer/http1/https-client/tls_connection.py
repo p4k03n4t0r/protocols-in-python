@@ -54,6 +54,7 @@ class TLS_Connection:
             server_response = TLS_Message_Parser.parse_application_data(server_response_raw)
             self.counter += 1
 
+        # handshake (x16/22)
         if server_response.message_type == b"\x16":
             # save all Handshake messages, because we'll need it for calculating the keys
             self.transcript_bytes.append(server_response_raw)

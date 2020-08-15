@@ -1,4 +1,5 @@
 from tls_message import TLS_Message
+from crypto_helper import Crypto_Helper
 
 class TLS_Message_Parser:
     ENDINESS = 'big'
@@ -69,12 +70,13 @@ class TLS_Message_Parser:
             pass # see https://tools.ietf.org/html/rfc8446#section-4.3.1
         # Certificate (x0b\11)
         elif tls_message.handshake_type == b"\x0b":
-            TLS_Message_Parser.parse_cert_data(tls_message, handshake_content)
+            TLS_Message_Parser.parse_certificate_data(tls_message, handshake_content)
         # CertificateVerify (x0f\15)
         elif tls_message.handshake_type == b"\x0f": 
-            pass # see https://tools.ietf.org/html/rfc8446#section-4.4.3
+            TLS_Message_Parser.parse_certificate_verify(tls_message, handshake_content)
         # Finished (x14\20)
         elif tls_message.handshake_type == b"\x14":
+            print("IGNORING FINISHED (for now)")
             pass # see https://tools.ietf.org/html/rfc8446#section-4.4.4
         else:
             raise Exception("Received handshake type that is unknown or can't be parsed yet: {}".format(tls_message.handshake_type))
@@ -202,7 +204,7 @@ class TLS_Message_Parser:
         return tls_message
 
     @staticmethod
-    def parse_cert_data(tls_message, handshake_content):
+    def parse_certificate_data(tls_message, handshake_content):
         # see https://tools.ietf.org/html/rfc8446#section-4.4.2
         # enum {
         #     X509(0),
@@ -224,5 +226,38 @@ class TLS_Message_Parser:
         #     CertificateEntry certificate_list<0..2^24-1>;
         # } Certificate;
 
-        print(handshake_content)
-        return None
+        i = 0
+        request_context = bytes([handshake_content[i]])
+        i += 1
+        # this message is not in response to a certificate request, so we expect the request context to be empty
+        if request_context != b"\x00":
+            raise Exception("request_context is expected to be empty")
+
+        certificates_length = int.from_bytes(handshake_content[i:i+3], TLS_Message_Parser.ENDINESS)
+        i += 3
+
+        # this should be it, so the index should match the length of the content
+        if i + certificates_length != len(handshake_content):
+            raise Exception("Invalid length for the certificates data")
+
+        # we parse all certificates
+        # tls_message.certificates = []
+        # TODO for now we only expect a single certificate
+        # while i < len(handshake_content):
+        certificate_length = int.from_bytes(handshake_content[i:i+3], TLS_Message_Parser.ENDINESS)
+        i += 3
+
+        # if i > len(handshake_content):
+        #     raise Exception("Invalid length for a certificate")
+
+        raw_certificate = handshake_content[i:]
+        i += certificate_length
+
+        # tls_message.certificates.append(Crypto_Helper.parse_certificate(raw_certificate))
+        tls_message.certificate = Crypto_Helper.parse_certificate(raw_certificate)
+
+    @staticmethod
+    def parse_certificate_verify(tls_message, handshake_content):
+        # see https://tools.ietf.org/html/rfc8446#section-4.4.3
+
+        pass

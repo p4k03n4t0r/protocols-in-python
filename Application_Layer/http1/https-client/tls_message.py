@@ -6,7 +6,7 @@ import math
 class TLS_Message:
     ENDINESS = 'big'
 
-    # TODO it's probably better if the enums are the other way around (key=hex, value=string)
+    # TODO it's probably better if the enums are the other way around (key=hex, value=string) if we want to use them to pretty print the hex codes
 
     # Use 'openssl ciphers -V' for more info about ciphers and which one can be used for TLS 1.3
     # Cipher suite names follow the naming convention:
@@ -91,8 +91,8 @@ class TLS_Message:
     }
 
     ALERT_LEVEL = {
-        "warning": b"\x01",
-        "fatal": b"\x02"
+        b"\x01": "warning",
+        b"\x02": "fatal"
     }
 
     ALERT_DESCRIPTION = {

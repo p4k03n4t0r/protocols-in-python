@@ -54,6 +54,8 @@ def wrap_in_tls_13(socket, host):
     # handshake (x16/22)
     if server_response.message_type != b"\x16":
         raise Exception("Expected a Handshake response, but got {}".format(server_response.message_type))
+    if server_response.handshake_type != b"\x02":
+        raise Exception("Expected a Server Hello or Hello Retry, but got {}".format(server_response.handshake_type))
     # if the response is a HelloRetryRequest this means the server is able to find an acceptable set of parameters but the ClientHello does not contain sufficient information to proceed with the handshake
     # it's kinda vague, but if the server handshake message doesn't contain a key exchange it's probably a Hello_Retry_Request
     if server_response.key_exchange is not None:
@@ -113,17 +115,32 @@ def wrap_in_tls_13(socket, host):
     # handshake (x16/22)
     if server_response.message_type != b"\x16":
         raise Exception("Expected a Handshake response, but got {}".format(server_response.message_type))
-    print(server_response)
+    if server_response.handshake_type != b"\x0b":
+        raise Exception("Expected a Certificate, but got {}".format(server_response.handshake_type))
+    # TODO validate certificate
+    print(server_response.certificate)
+    
+
+    # STEP 7)   
     server_response = tls_connection.receive()
     # handshake (x16/22)
     if server_response.message_type != b"\x16":
         raise Exception("Expected a Handshake response, but got {}".format(server_response.message_type))
+    if server_response.handshake_type != b"\x0f":
+        raise Exception("Expected a Certificate Verify, but got {}".format(server_response.handshake_type))
     print(server_response)
+
+
+    # STEP 8)
     server_response = tls_connection.receive()
     # handshake (x16/22)
     if server_response.message_type != b"\x16":
         raise Exception("Expected a Handshake response, but got {}".format(server_response.message_type))
+    if server_response.handshake_type != b"\x14":
+        raise Exception("Expected a Finished, but got {}".format(server_response.handshake_type))
     print(server_response)
+
+    # Finished! 🥳🥳🥳
 
     return tls_connection
 
