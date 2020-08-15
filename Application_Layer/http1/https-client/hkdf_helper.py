@@ -1,6 +1,8 @@
 import hmac
 import hashlib
 
+# HMAC Key Derivation helper
+# Used to derive from a crypthograpic key other cryptographically strong secret keys
 class Hkdf_Helper:
     # documentation: https://tools.ietf.org/html/rfc5869
     # methods from: https://github.com/casebeer/python-hkdf/blob/master/hkdf.py

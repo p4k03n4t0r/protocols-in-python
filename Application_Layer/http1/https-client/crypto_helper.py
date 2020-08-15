@@ -187,6 +187,7 @@ class Crypto_Helper:
 
         tag = ciphertext[len(ciphertext)-16:]
         ciphertext = ciphertext[:len(ciphertext)-16]
+        
         decryptor = Cipher(
             algorithms.AES(server_handshake_key),
             modes.GCM(iv, tag),
@@ -195,6 +196,24 @@ class Crypto_Helper:
         decryptor.authenticate_additional_data(additional_data)
         msg = decryptor.update(ciphertext) + decryptor.finalize()
         return msg
+
+    @staticmethod
+    def aead_encrypt(text, additional_data, client_handshake_key, client_handshake_iv, counter):
+        # from https://cryptography.io/en/latest/hazmat/primitives/symmetric-encryption/#cryptography.hazmat.primitives.ciphers.modes.GCM
+        # the tag is 16 bytes is long and appended at the end of the ciphertext, it's used to check the cipher text isn't tampered with
+        # more info https://bensmyth.com/files/Smyth19-TLS-tutorial.pdf (page 31)
+
+        # XOR the server_handshake_iv with the counter to get the iv to use
+        iv = int.from_bytes(server_handshake_iv, Crypto_Helper.ENDINESS) ^ counter
+        iv = iv.to_bytes(len(server_handshake_iv), Crypto_Helper.ENDINESS)
+
+        encryptor = Cipher(
+            algorithms.AES(client_handshake_key),
+            modes.GCM(iv),
+            backend=default_backend()
+        ).encryptor()
+        encryptor.authenticate_additional_data(additional_data)
+        return encryptor.update(plaintext) + encryptor.finalize()
 
     @staticmethod
     def parse_certificate(raw_certificate):

@@ -1,12 +1,12 @@
 import random
 import math
 
-# Note: this TLS message class is constructed to work with TLS 1.3 only, which means some values are hardcoded to make this a TLS 1.3 message
-# more info on: https://tools.ietf.org/html/rfc8446
+# An instance of this class represents a single message in a TLS connection
 class TLS_Message:
     ENDINESS = 'big'
 
     # TODO it's probably better if the enums are the other way around (key=hex, value=string) if we want to use them to pretty print the hex codes
+    # TODO might be better to move the enums to a seperate class (or not...🙂)
 
     # Use 'openssl ciphers -V' for more info about ciphers and which one can be used for TLS 1.3
     # Cipher suite names follow the naming convention:

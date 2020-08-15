@@ -4,13 +4,15 @@ import socket
 from crypto_helper import Crypto_Helper
 from tls_connection import TLS_Connection
 
-# example handshakes:
-# https://tools.ietf.org/html/rfc8448
 
+# follows the tls1.3 handshake protocol to wrap the socket in a tls connection and return a TLS_Connection object
+# with which encrypted messages can be send/received from the server
 def wrap_in_tls_13(socket, host):
     tls_connection = TLS_Connection(socket)
 
     # follows the flow described in: https://tools.ietf.org/html/rfc8446#section-2
+    # a clearer overview can be found on: https://tls13.ulfheim.net/
+    # example handshakes on byte level: https://tools.ietf.org/html/rfc8448
 
     # STEP 1) Construct a Client Hello handshake message
     # TLS 1.0 protocol version for interoperability with earlier implementations
@@ -24,17 +26,7 @@ def wrap_in_tls_13(socket, host):
     client_hello_message.server_name = host
     client_hello_message.generate_random()
     client_hello_message.add_cipher("TLS_AES_128_GCM_SHA256")
-    client_hello_message.add_signature_hash_algorithm("ecdsa_secp256r1_sha256")
-    client_hello_message.add_signature_hash_algorithm("ecdsa_secp384r1_sha384")
-    client_hello_message.add_signature_hash_algorithm("ecdsa_secp521r1_sha512")
-    client_hello_message.add_signature_hash_algorithm("ed25519")
-    client_hello_message.add_signature_hash_algorithm("ed448")
-    client_hello_message.add_signature_hash_algorithm("rsa_pss_pss_sha256")
-    client_hello_message.add_signature_hash_algorithm("rsa_pss_pss_sha384")
-    client_hello_message.add_signature_hash_algorithm("rsa_pss_pss_sha512")
     client_hello_message.add_signature_hash_algorithm("rsa_pss_rsae_sha256")
-    client_hello_message.add_signature_hash_algorithm("rsa_pss_rsae_sha384")
-    client_hello_message.add_signature_hash_algorithm("rsa_pss_rsae_sha512")
     client_hello_message.add_supported_version("tls1.3")
     # TODO for now we only support sending a single key per Client Hello, but TLS1.3 also allows sending multiple and the server choosing one of them
     cryptographic_group = "x25519"
@@ -45,8 +37,7 @@ def wrap_in_tls_13(socket, host):
     tls_connection.client_private_key = client_private_key
     client_hello_message.add_public_key(client_key_share, cryptographic_group)
     # pack the request and send
-    # we save the Client Hello request, because we need it to calculate the transcript hash
-    tls_connection.send(client_hello_message, True)
+    tls_connection.send(client_hello_message)
 
 
     # STEP 2) Receive Server Hello or Hello Client Retry handshake message
@@ -110,37 +101,49 @@ def wrap_in_tls_13(socket, host):
     print(server_response)
 
 
-    # STEP 6) We receive the certificate
+    # STEP 6) We receive a Certificate message
     server_response = tls_connection.receive()
     # handshake (x16/22)
     if server_response.message_type != b"\x16":
         raise Exception("Expected a Handshake response, but got {}".format(server_response.message_type))
     if server_response.handshake_type != b"\x0b":
         raise Exception("Expected a Certificate, but got {}".format(server_response.handshake_type))
-    # TODO validate certificate
-    print(server_response.certificate)
+    # TODO validate certificate of the server
+    tls_connection.server_certificate = server_response.certificate
     
 
-    # STEP 7)   
+    # STEP 7) We receive a Certificate Verify message
     server_response = tls_connection.receive()
     # handshake (x16/22)
     if server_response.message_type != b"\x16":
         raise Exception("Expected a Handshake response, but got {}".format(server_response.message_type))
     if server_response.handshake_type != b"\x0f":
         raise Exception("Expected a Certificate Verify, but got {}".format(server_response.handshake_type))
-    print(server_response)
+    # TODO validate signature of the server
+    print(server_response.server_algorithm)
+    print(server_response.server_signature)
 
 
-    # STEP 8)
+    # STEP 8) We receive a Finished message
     server_response = tls_connection.receive()
     # handshake (x16/22)
     if server_response.message_type != b"\x16":
         raise Exception("Expected a Handshake response, but got {}".format(server_response.message_type))
     if server_response.handshake_type != b"\x14":
         raise Exception("Expected a Finished, but got {}".format(server_response.handshake_type))
-    print(server_response)
+    # TODO verify (see https://tools.ietf.org/html/rfc8446#section-4.4.4)
+    print(server_response.server_verify_data)
 
-    # Finished! 🥳🥳🥳
+
+    # STEP 9) We send a Finished message
+    finished_message = TLS_Message("application_data", "tls1.0")
+    finished_message.set_handshake_type("finished")
+    # TODO calculate the verify_data variable and add it to the finished message
+    finished_message.client_verify_data = None
+    tls_connection.send(finished_message)
+
+
+    print("Handshake finished! 🥳🥳🥳")
 
     return tls_connection
 

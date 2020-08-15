@@ -1,11 +1,12 @@
 from tls_message import TLS_Message
 from crypto_helper import Crypto_Helper
 
-class TLS_Message_Parser:
+# This method offers helper methods to unpack bytes into an instance of a TLS_Message
+class TLS_Message_Unpacker:
     ENDINESS = 'big'
 
     @staticmethod
-    def parse_tls_message(message_type_bytes, message_version_bytes, record_length_bytes, raw_content):
+    def unpack_tls_message(message_type_bytes, message_version_bytes, record_length_bytes, raw_content):
         tls_message = TLS_Message(message_type_bytes, message_version_bytes)
         # see https://tools.ietf.org/html/rfc8446#section-5.1
         # Change Cipher Spec (x14/20) 
@@ -14,10 +15,10 @@ class TLS_Message_Parser:
             pass
         # Alert (x15/21)
         elif tls_message.message_type == b"\x15":
-            TLS_Message_Parser.parse_alert_content(tls_message, raw_content)
+            TLS_Message_Unpacker.parse_alert_content(tls_message, raw_content)
         # Handshake (x16/22)
         elif tls_message.message_type == b"\x16":
-            TLS_Message_Parser.parse_handshake_content(tls_message, raw_content)
+            TLS_Message_Unpacker.parse_handshake_content(tls_message, raw_content)
         # Application Data (x17/23)
         elif tls_message.message_type == b"\x17":
             # the whole content is the application data
@@ -36,8 +37,8 @@ class TLS_Message_Parser:
         #   AlertLevel level;
         #   AlertDescription description;
         # } Alert;
-        tls_message.level = raw_handshake[0]
-        tls_message.description = raw_handshake[1]
+        tls_message.level = bytes([raw_handshake[0]])
+        tls_message.description = bytes([raw_handshake[1]])
 
     @staticmethod
     def parse_handshake_content(tls_message, raw_handshake):
@@ -48,7 +49,7 @@ class TLS_Message_Parser:
         i += 1
 
         # handshake length (3 bytes)
-        handshake_content_length = int.from_bytes(raw_handshake[i:i+3], TLS_Message_Parser.ENDINESS)
+        handshake_content_length = int.from_bytes(raw_handshake[i:i+3], TLS_Message_Unpacker.ENDINESS)
         i += 3
 
         if i + handshake_content_length != len(raw_handshake):
@@ -59,25 +60,24 @@ class TLS_Message_Parser:
         # for all types see https://tools.ietf.org/html/rfc8446#section-4
         # Client Hello (x01/01)
         if tls_message.handshake_type == b"\x01":
-            TLS_Message_Parser.parse_hello(tls_message, handshake_content)
+            TLS_Message_Unpacker.parse_hello(tls_message, handshake_content)
         # Server Hello (or Client Hello Retry) (x02/02)
         elif tls_message.handshake_type == b"\x02":
-            TLS_Message_Parser.parse_hello(tls_message, handshake_content)
+            TLS_Message_Unpacker.parse_hello(tls_message, handshake_content)
         # Encrypted Extensions (x08/08)
         elif tls_message.handshake_type == b"\x08":
-            # TODO parse and handle Encrypted Extensions
+            # TODO parse and handle Encrypted Extensions (maybe combine with extensions from Hello messages)
             print("IGNORING ENCRYPTED EXTENSIONS (for now)")
             pass # see https://tools.ietf.org/html/rfc8446#section-4.3.1
         # Certificate (x0b\11)
         elif tls_message.handshake_type == b"\x0b":
-            TLS_Message_Parser.parse_certificate_data(tls_message, handshake_content)
+            TLS_Message_Unpacker.parse_certificate_data(tls_message, handshake_content)
         # CertificateVerify (x0f\15)
         elif tls_message.handshake_type == b"\x0f": 
-            TLS_Message_Parser.parse_certificate_verify(tls_message, handshake_content)
+            TLS_Message_Unpacker.parse_certificate_verify(tls_message, handshake_content)
         # Finished (x14\20)
         elif tls_message.handshake_type == b"\x14":
-            print("IGNORING FINISHED (for now)")
-            pass # see https://tools.ietf.org/html/rfc8446#section-4.4.4
+            TLS_Message_Unpacker.parse_finished(tls_message, handshake_content)
         else:
             raise Exception("Received handshake type that is unknown or can't be parsed yet: {}".format(tls_message.handshake_type))
 
@@ -200,7 +200,7 @@ class TLS_Message_Parser:
         
         # we create a new TLS_Message in the form of a handshake message
         # a bit dirty to hardcode the type (handshake x16) and version (tls1.3 x03x04), but should be okay for now
-        tls_message = TLS_Message_Parser.parse_tls_message(b"\x16", b"\x03\04", len(application_data), application_data)
+        tls_message = TLS_Message_Unpacker.unpack_tls_message(b"\x16", b"\x03\04", len(application_data), application_data)
         return tls_message
 
     @staticmethod
@@ -233,7 +233,7 @@ class TLS_Message_Parser:
         if request_context != b"\x00":
             raise Exception("request_context is expected to be empty")
 
-        certificates_length = int.from_bytes(handshake_content[i:i+3], TLS_Message_Parser.ENDINESS)
+        certificates_length = int.from_bytes(handshake_content[i:i+3], TLS_Message_Unpacker.ENDINESS)
         i += 3
 
         # this should be it, so the index should match the length of the content
@@ -244,7 +244,7 @@ class TLS_Message_Parser:
         # tls_message.certificates = []
         # TODO for now we only expect a single certificate
         # while i < len(handshake_content):
-        certificate_length = int.from_bytes(handshake_content[i:i+3], TLS_Message_Parser.ENDINESS)
+        certificate_length = int.from_bytes(handshake_content[i:i+3], TLS_Message_Unpacker.ENDINESS)
         i += 3
 
         # if i > len(handshake_content):
@@ -259,5 +259,29 @@ class TLS_Message_Parser:
     @staticmethod
     def parse_certificate_verify(tls_message, handshake_content):
         # see https://tools.ietf.org/html/rfc8446#section-4.4.3
+        # struct {
+        #     SignatureScheme algorithm;
+        #     opaque signature<0..2^16-1>;
+        # } CertificateVerify;
+        i = 0
+        algorithm = handshake_content[i:i+2]
+        if algorithm not in tls_message.AVAILABLE_HASH_SIGNATURE_ALGORITHMS.values():
+            raise Exception("Unknown algorithm: {}".format(algorithm))
+        tls_message.server_algorithm = algorithm
+        i += 2
 
-        pass
+        signature_length = int.from_bytes(handshake_content[i:i+2], TLS_Message_Unpacker.ENDINESS)
+        i += 2
+
+        if i + signature_length != len(handshake_content):
+            raise Exception("Invalid length for the signature")
+
+        tls_message.server_signature = handshake_content[i:i+signature_length]
+
+    @staticmethod
+    def parse_finished(tls_message, handshake_content):
+        # see https://tools.ietf.org/html/rfc8446#section-4.4.4
+        # struct {
+        #     opaque verify_data[Hash.length];
+        # } Finished;
+        tls_message.server_verify_data = handshake_content

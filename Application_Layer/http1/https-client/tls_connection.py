@@ -1,12 +1,13 @@
 from crypto_helper import Crypto_Helper
 from tls_message import TLS_Message
-from tls_message_receiver import TLS_Message_Receiver
 from tls_message_packer import TLS_Message_Packer
-from tls_message_parser import TLS_Message_Parser
+from tls_message_unpacker import TLS_Message_Unpacker
 
+# An instance of this class is used to initiate a TLS 1.3 handshake as a client with a server and a successful handshake send/receive encrypted messages
 class TLS_Connection:
     def __init__(self, socket):
         self.socket = socket
+        self.ENDINESS = "big"
         # init some values to None
         self.server_shared_key = None
         self.cryptographic_group = None
@@ -14,52 +15,71 @@ class TLS_Connection:
         self.transcript_bytes = []
         self.cipher_suite = None
         self.handshake_done = False
+        self.client_handshake_key = None
+        self.client_handshake_iv = None
+        self.counter = None
 
-    def send(self, message, add_to_transcript = False):
-        message_bytes = TLS_Message_Packer.pack(message)
-        # if needed we append the bytes of the message to the transcript of this handshake
-        if add_to_transcript:
+    def send(self, message):
+        # we also send the client handshake key and iv and counter, because it might be needed to encrypt and wrap the message
+        message_bytes = TLS_Message_Packer.pack_tls_message(message, self.client_handshake_key, self.client_handshake_iv, self.counter)
+        if message.message_type == b"\x16":
+            # TODO check if this is right
             self.transcript_bytes.append(message_bytes)
+        # If the send message is application data (x17) we increment the counter
+        if message.message_type == b"\x17":
+            self.counter += 1
         print("SENDING: 📤")
         print(message_bytes)
         self.socket.send(message_bytes)
 
-        # TODO if the send message is application data (x17) we increment the counter
-        # if self.handshake_done:
-        #     # encrypt & send
-        #     self.counter += 1
-        #     # raise Exception("Can't send encrypted messages yet")
-
     def receive(self):
         print("RECEIVING: 📥")
-        server_response, server_response_raw = TLS_Message_Receiver.receive(self.socket)
-        print(server_response_raw)
-        if self.session != server_response.session:
+        raw_message = b""
+
+        # receive the message type
+        message_type_bytes = self.socket.recv(1)
+        raw_message += message_type_bytes
+
+        # receive the message TLS version
+        message_version_bytes = self.socket.recv(2)
+        raw_message += message_version_bytes
+
+        # receive the length of message and the message itself using this length
+        record_length_bytes = self.socket.recv(2)
+        record_length = int.from_bytes(record_length_bytes, self.ENDINESS)
+        raw_message += record_length_bytes
+        raw_content = self.socket.recv(record_length)
+        raw_message += raw_content
+
+        tls_message = TLS_Message_Unpacker.unpack_tls_message(message_type_bytes, message_version_bytes, record_length_bytes, raw_content)
+        print(raw_message)
+        if self.session != tls_message.session:
             raise Exception("Session id doesn't match!")
 
         # alert (x15/21)
-        if server_response.message_type == b"\x15":
+        if tls_message.message_type == b"\x15":
             print("Alert")
             # parse back the binary value to the string value so we can print it 
-            level_message = TLS_Message.ALERT_LEVEL[server_response.level]
-            description_message = TLS_Message.ALERT_DESCRIPTION[server_response.description]
+            level_message = TLS_Message.ALERT_LEVEL[tls_message.level]
+            description_message = TLS_Message.ALERT_DESCRIPTION[tls_message.description]
             print("Level: {}, Description: {}".format(level_message, description_message))
+            # TODO handshake should only be stopped for level fatal
             raise Exception("Alert received, halting handshake")
    
         # application_data (x17/23)
-        if server_response.message_type == b"\x17":
-            server_response_raw = self.decrypt_response(server_response.application_data, server_response.additional_data)
+        if tls_message.message_type == b"\x17":
+            server_response_raw = self.decrypt_response(tls_message.application_data, tls_message.additional_data)
             # the decrypted Application Data is actually a Handshake message (https://tools.ietf.org/html/rfc8446#section-4)
             # we parse the application data as a Handshake message and set it as server_response
-            server_response = TLS_Message_Parser.parse_application_data(server_response_raw)
+            tls_message = TLS_Message_Unpacker.parse_application_data(server_response_raw)
             self.counter += 1
 
         # handshake (x16/22)
-        if server_response.message_type == b"\x16":
+        if tls_message.message_type == b"\x16":
             # save all Handshake messages, because we'll need it for calculating the keys
-            self.transcript_bytes.append(server_response_raw)
+            self.transcript_bytes.append(raw_message)
         
-        return server_response
+        return tls_message
 
     def calculate_keys(self):
         # 1) calculate the shared secret

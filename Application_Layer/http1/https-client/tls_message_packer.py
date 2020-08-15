@@ -1,26 +1,32 @@
+from crypto_helper import Crypto_Helper
+
+# This method offers helper methods to pack an instance of a TLS_Message into bytes
 class TLS_Message_Packer:
     @staticmethod
-    def pack(tls_message):
-        # x14 (20) = change cipher spec
+    def pack_tls_message(tls_message, client_handshake_key, client_handshake_iv, counter):
+        # change_cipher_spec (x14/20)
         if tls_message.message_type == b"\x14":
             # this message type always has a body with 0x01
             message = b"\x01"
-        # x16 (22) = handshake
-        elif tls_message.message_type == b"\x16":
-            # TODO also allowing packing of other handshakes besides Client Hello
-            # x01 (1) = Client Hello handshake
-            if tls_message.handshake_type != b"\x01":
-                raise Exception("Only Client Hello handshakes can be packed (for now)")
-            
+        # alert (x15/19)
+        elif tls_message.message_type == b"\x15":
+            raise Exception("Packing alert is not yet supported")
+        # handshake (x16/22) or application_data (x17/23)
+        elif tls_message.message_type == b"\x16" or tls_message.message_type == b"\x17":            
             # we pack the request backwards, because we have to know the length of the other parts
-            client_hello_header = TLS_Message_Packer.pack_client_hello_header(tls_message)
+            handshake_content = TLS_Message_Packer.pack_handshake_content(tls_message)
             # use the length of the client_hello_header in the handshake_header
-            handshake_header = TLS_Message_Packer.pack_handshake_header(tls_message, len(client_hello_header))
+            handshake_header = TLS_Message_Packer.pack_handshake_header(tls_message, len(handshake_content))
             # prepend the handshake_header before the client_hello_header
-            message = handshake_header + client_hello_header
-        else:
-            # TODO also allowing packing of other message types 
-            raise Exception("This message type is not supported for packing yet")
+            message = handshake_header + handshake_content
+        # application_data (x17/23)
+        if tls_message.message_type == b"\x17":
+            # additional data is a combination of the record fields of this package
+            # see https://tools.ietf.org/html/rfc8446#section-5.2 (the || mean concating not a logical OR operation)
+            additional_data = tls_message.message_type + tls_message.message_version + int.to_bytes(len(message))
+            # for application data we still have to encrypt the message
+            message = Crypto_Helper.aead_encrypt(message, additional_data, client_handshake_key, client_handshake_iv, counter)
+            raise Exception("Not implemented yet")
 
         # use the combined length of the handshake_header and client_hello_header in the record_header
         # prepend the record_header before the message
@@ -43,12 +49,25 @@ class TLS_Message_Packer:
         return handshake_header
 
     @staticmethod
-    def pack_client_hello_header(handshake):
+    def pack_handshake_content(tls_message):
+        # see https://tools.ietf.org/html/rfc8446#section-4
+        # client_hello (x01/01)
+        if tls_message.handshake_type == b"\x01":
+            return TLS_Message_Packer.pack_client_hello(tls_message)  
+        # finished (x14/20)
+        elif tls_message.handshake_type == b"\x14":
+            return TLS_Message_Packer.pack_verify(tls_message)
+        else:
+            raise Exception("Handshake type can't be packed yet: {}".format(tls_message.handshake_type))
+
+    @staticmethod
+    def pack_client_hello(handshake):
+        # see https://tools.ietf.org/html/rfc8446#section-4.1.2
         # Client Version
-        client_hello_header = handshake.handshake_version
+        client_hello_packed = handshake.handshake_version
 
         # Client Random: 32 bytes of random data
-        client_hello_header += handshake.client_random
+        client_hello_packed += handshake.client_random
 
         # Session ID: In TLS 1.3 the session is done using PSK (pre-shared keys) mechanism, so this field is no longer needed for that purpose. 
         # Instead a non-empty value in this field is used to trigger "middlebox compatibility mode" which helps TLS 1.3 sessions to be disguised as resumed TLS 1.2 sessions.
@@ -56,30 +75,35 @@ class TLS_Message_Packer:
             session_length = 32
             handshake.session = handshake.get_random_number(session_length).to_bytes(session_length, handshake.ENDINESS)
         # length of the session ID
-        client_hello_header += len(handshake.session).to_bytes(1, handshake.ENDINESS)
+        client_hello_packed += len(handshake.session).to_bytes(1, handshake.ENDINESS)
         # random session ID
-        client_hello_header += handshake.session
+        client_hello_packed += handshake.session
 
         # Cipher Suites: The client provides an ordered list of which cipher suites it will support for encryption. 
         # The list is in the order preferred by the client, with highest preference first.
         cipher_bytes = b"".join(handshake.ciphers)
         # length of the ciphers in bytes
-        client_hello_header += len(cipher_bytes).to_bytes(2, handshake.ENDINESS)
-        client_hello_header += cipher_bytes
+        client_hello_packed += len(cipher_bytes).to_bytes(2, handshake.ENDINESS)
+        client_hello_packed += cipher_bytes
 
         # Compression Methods: TLS 1.3 no longer allows compression, so this field is always a single entry with the "null" compression method which performs no change to the data.
         # length of compression methods in bytes
-        client_hello_header += b"\x01"
+        client_hello_packed += b"\x01"
         # 0x00 indicates "null" compression
-        client_hello_header += b"\x00"
+        client_hello_packed += b"\x00"
 
         # Extensions: optional extensions the client can provide 
         extensions_header = TLS_Message_Packer.pack_extensions_header(handshake)
         # length of the extensions header
-        client_hello_header += len(extensions_header).to_bytes(2, handshake.ENDINESS)
-        client_hello_header += extensions_header
+        client_hello_packed += len(extensions_header).to_bytes(2, handshake.ENDINESS)
+        client_hello_packed += extensions_header
 
-        return client_hello_header
+        return client_hello_packed
+
+    @staticmethod
+    def pack_verify(handshake):
+        # see https://tools.ietf.org/html/rfc8446#section-4.4.4
+        return handshake.client_verify_data
 
     @staticmethod
     def pack_extensions_header(handshake):
