@@ -1,11 +1,12 @@
 import random
 import math
-from tls_message_parser import TLS_Message_Parser
 
 # Note: this TLS message class is constructed to work with TLS 1.3 only, which means some values are hardcoded to make this a TLS 1.3 message
 # more info on: https://tools.ietf.org/html/rfc8446
 class TLS_Message:
     ENDINESS = 'big'
+
+    # TODO it's probably better if the enums are the other way around (key=hex, value=string)
 
     # Use 'openssl ciphers -V' for more info about ciphers and which one can be used for TLS 1.3
     # Cipher suite names follow the naming convention:
@@ -77,8 +78,16 @@ class TLS_Message:
     }
 
     HANDSHAKE_TYPES = {
-        "Client_Hello": b"\x01",
-        "Server_Hello": b"\x02"
+        "client_hello": b"\x01",
+        "server_hello": b"\x02",
+        "new_session_ticket": b"\x04",
+        "end_of_early_data": b"\x05",
+        "encrypted_extensions": b"\x08",
+        "certificate": b"\x0b",
+        "certificate_request": b"\x0d",
+        "certificate_verify": b"\x0f",
+        "finished": b"\x14",
+        "key_update": b"\x18"
     }
 
     ALERT_LEVEL = {
@@ -87,34 +96,34 @@ class TLS_Message:
     }
 
     ALERT_DESCRIPTION = {
-        "close_notify": b"\x00",
-        "unexpected_message": b"\x0a",
-        "bad_record_mac": b"\x14",
-        "decryption_failed_RESERVED": b"\x15",
-        "record_overflow": b"\x16",
-        "decompression_failure": b"\x1e",
-        "handshake_failure": b"\x28",
-        "no_certificate_RESERVED": b"\x29",
-        "bad_certificate": b"\x2a",
-        "unsupported_certificate": b"\x2b",
-        "certificate_revoked": b"\x2c",
-        "certificate_expired": b"\x2d",
-        "certificate_unknown": b"\x2e",
-        "illegal_parameter": b"\x2f",
-        "unknown_ca": b"\x30",
-        "access_denied": b"\x31",
-        "decode_error": b"\x32",
-        "decrypt_error": b"\x33",
-        "export_restriction_RESERVED": b"\x3c",
-        "protocol_version": b"\x46",
-        "insufficient_security": b"\x47",
-        "internal_error": b"\x50",
-        "user_canceled": b"\x5a",
-        "no_renegotiation": b"\x64",
-        "unsupported_extension": b"\x6e"
+        b"\x00": "close_notify",
+        b"\x0a": "unexpected_message",
+        b"\x14": "bad_record_mac",
+        b"\x15": "decryption_failed_RESERVED",
+        b"\x16": "record_overflow",
+        b"\x1e": "decompression_failure",
+        b"\x28": "handshake_failure",
+        b"\x29": "no_certificate_RESERVED",
+        b"\x2a": "bad_certificate",
+        b"\x2b": "unsupported_certificate",
+        b"\x2c": "certificate_revoked",
+        b"\x2d": "certificate_expired",
+        b"\x2e": "certificate_unknown",
+        b"\x2f": "illegal_parameter",
+        b"\x30": "unknown_ca",
+        b"\x31": "access_denied",
+        b"\x32": "decode_error",
+        b"\x33": "decrypt_error",
+        b"\x3c": "export_restriction_RESERVED",
+        b"\x46": "protocol_version",
+        b"\x47": "insufficient_security",
+        b"\x50": "internal_error",
+        b"\x5a": "user_canceled",
+        b"\x64": "no_renegotiation",
+        b"\x6e": "unsupported_extension",
     }
     
-    def __init__(self, message_type_name = None, message_version_name = None):
+    def __init__(self, message_type, message_version):
         self.ENDINESS = TLS_Message.ENDINESS 
         self.server_name = None
         self.ciphers = []
@@ -122,62 +131,26 @@ class TLS_Message:
         self.signature_algorithms = []
         self.supported_versions = []
         self.public_keys = []
-        if message_type_name != None:
-            if message_type_name not in self.MESSAGE_TYPES:
-                raise Exception("Message type {} is not available".format(message_type_name))
-            self.message_type = self.MESSAGE_TYPES[message_type_name]
-        if message_version_name != None:
-            if message_version_name not in self.TLS_VERSIONS:
-                raise Exception("Message version {} is not available".format(message_version_name))
-            self.message_version = self.TLS_VERSIONS[message_version_name]
+        if isinstance(message_type, str):
+            if message_type not in self.MESSAGE_TYPES:
+                raise Exception("Message type {} is not available".format(message_type))
+            self.message_type = self.MESSAGE_TYPES[message_type]
+        elif isinstance(message_type, bytes):
+            self.message_type = message_type
+        else:
+            raise Exception("Message_type must either be a string or bytes")
+        if isinstance(message_version, str):
+            if message_version not in self.TLS_VERSIONS:
+                raise Exception("Message version {} is not available".format(message_version))
+            self.message_version = self.TLS_VERSIONS[message_version]
+        elif isinstance(message_version, bytes):
+            self.message_version = message_version
+        else:
+            raise Exception("Message_version must either be a string or bytes")
         self.handshake_type = None
         self.session = None
         self.application_data = None
         self.key_exchange = None
-
-    @staticmethod
-    def receive(socket):
-        # also track and return the raw_message since we might need this later
-        raw_message = b""
-        tls_message = TLS_Message()
-
-        # receive the message type
-        message_type_bytes = socket.recv(1)
-        tls_message.message_type = message_type_bytes
-        raw_message += message_type_bytes
-
-        # receive the message TLS version
-        message_version_bytes = socket.recv(2)
-        tls_message.message_version = message_version_bytes
-        raw_message += message_version_bytes
-
-        # receive the length of message and the message itself using this length
-        record_length_bytes = socket.recv(2)
-        record_length = int.from_bytes(record_length_bytes, TLS_Message.ENDINESS)
-        raw_message += record_length_bytes
-        raw_content = socket.recv(record_length)
-        raw_message += raw_content
-
-        # Change Cipher Spec (x14/20) 
-        if tls_message.message_type == b"\x14":
-            # the Change Cipher Spec message doesn't have a body
-            pass
-        # Alert (x15/21)
-        elif tls_message.message_type == b"\x15":
-            TLS_Message_Parser.parse_alert_content(tls_message, raw_content)
-        # Handshake (x16/22)
-        elif tls_message.message_type == b"\x16":
-            TLS_Message_Parser.parse_handshake_content(tls_message, raw_content)
-        # Application Data (x17/23)
-        elif tls_message.message_type == b"\x17":
-            # the whole content is the application data
-            tls_message.application_data = raw_content
-            # additional data is a combination of the record fields of this package
-            # see https://tools.ietf.org/html/rfc8446#section-5.2 (the || mean concating not a logical OR operation)
-            tls_message.additional_data = message_type_bytes + message_version_bytes + record_length_bytes
-        else:
-            raise Exception("Can't handle this message type yet")
-        return tls_message, raw_message
         
     def generate_random(self):
         # generate random number which is 32 bytes long
