@@ -19,46 +19,46 @@ class TLS_Connection:
         self.client_handshake_iv = None
         self.counter = None
 
-    def send(self, message):
+    def send(self, tls_message):
         # we also send the client handshake key and iv and counter, because it might be needed to encrypt and wrap the message
-        message_bytes = TLS_Message_Packer.pack_tls_message(message, self.client_handshake_key, self.client_handshake_iv, self.counter)
-        if message.message_type == b"\x16":
+        message_bytes = TLS_Message_Packer.pack_tls_message(tls_message, self.client_handshake_key, self.client_handshake_iv, self.counter)
+        if tls_message.message_type == b"\x16":
             # TODO check if this is right
             self.transcript_bytes.append(message_bytes)
         # If the send message is application data (x17) we increment the counter
-        if message.message_type == b"\x17":
+        if tls_message.message_type == b"\x17":
             self.counter += 1
         print("SENDING: 📤")
-        print(message_bytes)
+        print("TYPE {} : {}".format(tls_message.message_type, message_bytes))
         self.socket.send(message_bytes)
 
     def receive(self):
         print("RECEIVING: 📥")
-        raw_message = b""
+        message_bytes = b""
 
         # receive the message type
         message_type_bytes = self.socket.recv(1)
-        raw_message += message_type_bytes
+        message_bytes += message_type_bytes
 
         # receive the message TLS version
         message_version_bytes = self.socket.recv(2)
-        raw_message += message_version_bytes
+        message_bytes += message_version_bytes
 
         # receive the length of message and the message itself using this length
         record_length_bytes = self.socket.recv(2)
         record_length = int.from_bytes(record_length_bytes, self.ENDINESS)
-        raw_message += record_length_bytes
-        raw_content = self.socket.recv(record_length)
-        raw_message += raw_content
+        message_bytes += record_length_bytes
+        content_bytes = self.socket.recv(record_length)
+        message_bytes += content_bytes
 
-        tls_message = TLS_Message_Unpacker.unpack_tls_message(message_type_bytes, message_version_bytes, record_length_bytes, raw_content)
-        print(raw_message)
+        tls_message = TLS_Message_Unpacker.unpack_tls_message(message_type_bytes, message_version_bytes, record_length_bytes, content_bytes)
+        print("TYPE {} : {}".format(tls_message.message_type, message_bytes))
         if self.session != tls_message.session:
             raise Exception("Session id doesn't match!")
 
         # alert (x15/21)
         if tls_message.message_type == b"\x15":
-            print("Alert")
+            print("Alert 🚨")
             # parse back the binary value to the string value so we can print it 
             level_message = TLS_Message.ALERT_LEVEL[tls_message.level]
             description_message = TLS_Message.ALERT_DESCRIPTION[tls_message.description]
@@ -77,7 +77,7 @@ class TLS_Connection:
         # handshake (x16/22)
         if tls_message.message_type == b"\x16":
             # save all Handshake messages, because we'll need it for calculating the keys
-            self.transcript_bytes.append(raw_message)
+            self.transcript_bytes.append(message_bytes)
         
         return tls_message
 

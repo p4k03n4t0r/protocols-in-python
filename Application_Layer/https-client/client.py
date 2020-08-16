@@ -91,9 +91,7 @@ def wrap_in_tls_13(socket, host):
     # these messages will automatically be decrypted in the receive step
 
 
-    # STEP 5) We receive some application data
-    # TODO what is this data? idk... maybe alpnProtocol (GO client receives an empty string)
-    # see https://tools.ietf.org/html/rfc8446#section-4.3.1
+    # STEP 5) We receive a Encrypted Extensions message
     server_response = tls_connection.receive()
     # handshake (x16/22)
     if server_response.message_type != b"\x16":
