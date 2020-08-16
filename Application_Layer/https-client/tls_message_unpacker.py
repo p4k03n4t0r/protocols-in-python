@@ -267,7 +267,7 @@ class TLS_Message_Unpacker:
         algorithm = handshake_content[i:i+2]
         if algorithm not in tls_message.AVAILABLE_HASH_SIGNATURE_ALGORITHMS.values():
             raise Exception("Unknown algorithm: {}".format(algorithm))
-        tls_message.server_algorithm = algorithm
+        tls_message.server_signature_algorithm = algorithm
         i += 2
 
         signature_length = int.from_bytes(handshake_content[i:i+2], TLS_Message_Unpacker.ENDINESS)

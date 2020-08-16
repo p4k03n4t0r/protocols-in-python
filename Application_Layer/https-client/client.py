@@ -117,9 +117,7 @@ def wrap_in_tls_13(socket, host):
         raise Exception("Expected a Handshake response, but got {}".format(server_response.message_type))
     if server_response.handshake_type != b"\x0f":
         raise Exception("Expected a Certificate Verify, but got {}".format(server_response.handshake_type))
-    # TODO validate signature of the server
-    print(server_response.server_algorithm)
-    print(server_response.server_signature)
+    tls_connection.verify_certificate(server_response.server_signature_algorithm, server_response.server_signature)
 
 
     # STEP 8) We receive a Finished message
@@ -133,7 +131,10 @@ def wrap_in_tls_13(socket, host):
     print(server_response.server_verify_data)
 
 
-    # STEP 9) We send a Finished message
+    # STEP 9) We send a Certificate (and Certificate Verify?)
+
+
+    # STEP 10) We send a Finished message
     finished_message = TLS_Message("application_data", "tls1.0")
     finished_message.set_handshake_type("finished")
     # TODO calculate the verify_data variable and add it to the finished message

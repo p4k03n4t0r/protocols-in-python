@@ -21,15 +21,13 @@ class TLS_Connection:
 
     def send(self, tls_message):
         # we also send the client handshake key and iv and counter, because it might be needed to encrypt and wrap the message
-        message_bytes = TLS_Message_Packer.pack_tls_message(tls_message, self.client_handshake_key, self.client_handshake_iv, self.counter)
-        if tls_message.message_type == b"\x16":
-            # TODO check if this is right
-            self.transcript_bytes.append(message_bytes)
+        message_bytes, transcript_message_bytes = TLS_Message_Packer.pack_tls_message(tls_message, self.client_handshake_key, self.client_handshake_iv, self.counter)
+        self.update_transcript(tls_message, transcript_message_bytes, True)
         # If the send message is application data (x17) we increment the counter
         if tls_message.message_type == b"\x17":
             self.counter += 1
         print("SENDING: 📤")
-        print("TYPE {} : {}".format(tls_message.message_type, message_bytes))
+        print(message_bytes)
         self.socket.send(message_bytes)
 
     def receive(self):
@@ -52,7 +50,7 @@ class TLS_Connection:
         message_bytes += content_bytes
 
         tls_message = TLS_Message_Unpacker.unpack_tls_message(message_type_bytes, message_version_bytes, record_length_bytes, content_bytes)
-        print("TYPE {} : {}".format(tls_message.message_type, message_bytes))
+        print(message_bytes)
         if self.session != tls_message.session:
             raise Exception("Session id doesn't match!")
 
@@ -65,21 +63,44 @@ class TLS_Connection:
             print("Level: {}, Description: {}".format(level_message, description_message))
             # TODO handshake should only be stopped for level fatal
             raise Exception("Alert received, halting handshake")
-   
-        # application_data (x17/23)
-        if tls_message.message_type == b"\x17":
-            server_response_raw = self.decrypt_response(tls_message.application_data, tls_message.additional_data)
-            # the decrypted Application Data is actually a Handshake message (https://tools.ietf.org/html/rfc8446#section-4)
-            # we parse the application data as a Handshake message and set it as server_response
-            tls_message = TLS_Message_Unpacker.parse_application_data(server_response_raw)
-            self.counter += 1
 
         # handshake (x16/22)
         if tls_message.message_type == b"\x16":
-            # save all Handshake messages, because we'll need it for calculating the keys
-            self.transcript_bytes.append(message_bytes)
-        
+            self.update_transcript(tls_message, message_bytes, True)
+   
+        # application_data (x17/23)
+        if tls_message.message_type == b"\x17":
+            message_bytes = self.decrypt_response(tls_message.application_data, tls_message.additional_data)
+            # the decrypted Application Data is actually a Handshake message (https://tools.ietf.org/html/rfc8446#section-4)
+            # we parse the application data as a Handshake message and set it as server_response
+            tls_message = TLS_Message_Unpacker.parse_application_data(message_bytes)
+            self.update_transcript(tls_message, message_bytes, False)
+            self.counter += 1
+
         return tls_message
+
+    def update_transcript(self, tls_message, message_bytes, remove_record_header):
+        # For concreteness, the transcript hash is always taken from the
+        # following sequence of handshake messages, starting at the first
+        # ClientHello and including only those messages that were sent:
+        # ClientHello, HelloRetryRequest, ClientHello, ServerHello,
+        # EncryptedExtensions, server CertificateRequest, server Certificate,
+        # server CertificateVerify, server Finished, EndOfEarlyData, client
+        # Certificate, client CertificateVerify, client Finished.
+        # handshake (x16/22) or application_data (x17/23)
+        if tls_message.message_type in [b"\x16", b"\x17"]:
+                # "client_hello": b"\x01",
+                # "server_hello": b"\x02",
+                # "encrypted_extensions": b"\x08",
+                # "certificate": b"\x0b",
+                # "certificate_request": b"\x0d",
+                # "certificate_verify": b"\x0f",
+                # "finished": b"\x14",
+            if tls_message.handshake_type in [b"\x01", b"\x02", b"\x08", b"\x0d", b"\x0b", b"\x0d", b"\x0f", b"\x14"]:
+                if remove_record_header:
+                    message_bytes = message_bytes[5:]
+                self.transcript_bytes.append(message_bytes)
+        pass
 
     def calculate_keys(self):
         # 1) calculate the shared secret
@@ -130,3 +151,20 @@ class TLS_Connection:
         counter = self.counter
         decrypted_message = Crypto_Helper.aead_decrypt(message, additional_data, server_handshake_key, server_handshake_iv, counter)
         return decrypted_message
+
+    def verify_certificate(self, server_signature_algorithm, server_signature):
+        # The digital signature is then computed over the concatenation of:
+        # -  A string that consists of octet 32 (0x20) repeated 64 times
+        # -  The context string
+        # -  A single 0 byte which serves as the separator
+        # -  The content to be signed
+        dignital_signature =  b"\x20"*64
+        dignital_signature += b"TLS 1.3, client CertificateVerify"
+        dignital_signature += b"\x00"
+        transcript_hash = Crypto_Helper.hash_transcript(self.cipher_suite, self.transcript_bytes)
+        dignital_signature += transcript_hash
+
+        # verify signature
+        Crypto_Helper.verify_certificate_signature(server_signature, dignital_signature, self.server_certificate, server_signature_algorithm)
+
+        return

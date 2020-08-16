@@ -19,6 +19,9 @@ class TLS_Message_Packer:
             handshake_header = TLS_Message_Packer.pack_handshake_header(tls_message, len(handshake_content))
             # prepend the handshake_header before the client_hello_header
             message = handshake_header + handshake_content
+
+        # we keep this message because we need this one for the transcript
+        transcript_message = message
         # application_data (x17/23)
         if tls_message.message_type == b"\x17":
             # additional data is a combination of the record fields of this package
@@ -31,7 +34,8 @@ class TLS_Message_Packer:
         # use the combined length of the handshake_header and client_hello_header in the record_header
         # prepend the record_header before the message
         packed = TLS_Message_Packer.pack_record_header(tls_message, len(message)) + message
-        return packed
+        packed_transcript = TLS_Message_Packer.pack_record_header(tls_message, len(transcript_message)) + transcript_message
+        return packed, packed_transcript
 
     @staticmethod
     def pack_record_header(tls_message, message_length):

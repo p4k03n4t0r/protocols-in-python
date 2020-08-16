@@ -10,6 +10,9 @@ from cryptography.hazmat.primitives.asymmetric.x448 import X448PrivateKey, X448P
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, PublicFormat, NoEncryption 
 
+# TODO check imports
+from cryptography.hazmat.primitives.asymmetric import padding
+
 from hkdf_helper import Hkdf_Helper
 
 # TODO maybe split up this class into seperate crypto helpers
@@ -146,11 +149,9 @@ class Crypto_Helper:
 
         # we concat the handshake messages while we skip the record part of them (first five bytes)
         # see https://tools.ietf.org/html/rfc8446#section-4.4.1
-        # TODO handle HelloRetryRequests properly
         concat = b""
         for i in range(len(transcript_bytes)):
-            message = transcript_bytes[i]
-            concat += message[5:len(message)]
+            concat += transcript_bytes[i]
         digest.update(concat)
         return digest.finalize()
 
@@ -219,3 +220,34 @@ class Crypto_Helper:
     def parse_certificate(raw_certificate):
         certificate = x509.load_der_x509_certificate(raw_certificate, default_backend())
         return certificate
+
+    @staticmethod
+    def verify_certificate_signature(signature_to_verify, data, certificate, signature_algorithm):
+        server_public_key = certificate.public_key()
+
+        if signature_algorithm in [b"\x04\x01", b"\x04\x03", b"\x08\x04", b"\x08\x09"]:
+            signature_hashes = hashes.SHA256()
+        elif signature_algorithm in [b"\x05\x01", b"\x05\x03", b"\x08\x05", b"\x08\x0a"]:
+            signature_hashes = hashes.SHA384()
+        elif signature_algorithm in [b"\x06\x01", b"\x06\x03", b"\x08\x06", b"\x08\x0b"]:
+            signature_hashes = hashes.SHA512()
+        else:
+            raise Exception("Signature hash not supported: {}".format(signature_algorithm))
+
+        if signature_algorithm in [b"\x04\x01", b"\x05\x01", b"\x06\x01"]:
+            signature_padding = padding.PKCS1()
+        elif signature_algorithm in [b"\x08\x04", b"\x08\x05", b"\x08\x06", b"\x08\x09", b"\x08\x0a", b"\x08\x0b"]:
+            signature_padding = padding.PSS(
+                mgf=padding.MGF1(signature_hashes),
+                salt_length=padding.PSS.MAX_LENGTH)
+        else:
+            raise Exception("Signature padding not supported: {}".format(signature_algorithm))
+
+        # if the verify fails an exception will be thrown
+        server_public_key.verify(
+            signature_to_verify,
+            data,
+            signature_padding,
+            signature_hashes,
+        )
+        return
