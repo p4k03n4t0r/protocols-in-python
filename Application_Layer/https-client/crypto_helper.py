@@ -3,7 +3,7 @@ from Crypto.PublicKey import ECC
 # pip3 install cryptography
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives import hashes, hmac
 from cryptography.hazmat.primitives.asymmetric.ec import generate_private_key, derive_private_key, SECP256R1, SECP384R1, SECP521R1, ECDH
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
 from cryptography.hazmat.primitives.asymmetric.x448 import X448PrivateKey, X448PublicKey
@@ -174,7 +174,7 @@ class Crypto_Helper:
         server_handshake_key = Hkdf_Helper.hkdf_expand_label(server_handshake_traffic_secret, b"key", b"", 16)
         server_handshake_iv = Hkdf_Helper.hkdf_expand_label(server_handshake_traffic_secret, b"iv", b"", 12)
 
-        return client_handshake_key, server_handshake_key, client_handshake_iv, server_handshake_iv
+        return client_handshake_traffic_secret, server_handshake_traffic_secret, client_handshake_key, server_handshake_key, client_handshake_iv, server_handshake_iv
 
     @staticmethod
     def aead_decrypt(ciphertext, additional_data, server_handshake_key, server_handshake_iv, counter):
@@ -251,3 +251,12 @@ class Crypto_Helper:
             signature_hashes,
         )
         return
+
+    @staticmethod
+    def verify_data(expected_data, server_handshake_traffic_secret, finished_hash):
+        finished_key = Hkdf_Helper.hkdf_expand_label(server_handshake_traffic_secret, b"finished", b"")
+        actual_data_hmac = hmac.HMAC(finished_key, hashes.SHA256(), backend=default_backend())
+        actual_data_hmac.update(finished_hash)
+        actual_data = actual_data_hmac.finalize()
+        if actual_data != expected_data:
+            raise Exception("Verify data step failed")

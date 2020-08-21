@@ -96,7 +96,8 @@ class TLS_Connection:
                 # "certificate_request": b"\x0d",
                 # "certificate_verify": b"\x0f",
                 # "finished": b"\x14",
-            if tls_message.handshake_type in [b"\x01", b"\x02", b"\x08", b"\x0d", b"\x0b", b"\x0d", b"\x0f", b"\x14"]:
+                # TODO Golang only adds the certificate verify to the transcript after using the transcript for the hash
+            if tls_message.handshake_type in [b"\x01", b"\x02", b"\x08", b"\x0d", b"\x0b", b"\x0d", b"\x14"]:#b"\x0f", b"\x14"]:
                 if remove_record_header:
                     message_bytes = message_bytes[5:]
                 self.transcript_bytes.append(message_bytes)
@@ -127,7 +128,7 @@ class TLS_Connection:
 
         # 3) Key derivation and checking using specified cipher 
         # gives back 4 keys back based on the shared secret, these 4 keys will be used to encrypt/decrypt messages to/from the server 
-        self.client_handshake_key, self.server_handshake_key, self.client_handshake_iv, self.server_handshake_iv = Crypto_Helper.derive_keys(cipher_suite, self.shared_secret, transcript_hash)
+        self.client_handshake_traffic_secret, self.server_handshake_traffic_secret, self.client_handshake_key, self.server_handshake_key, self.client_handshake_iv, self.server_handshake_iv = Crypto_Helper.derive_keys(cipher_suite, self.shared_secret, transcript_hash)
         print(b"client_handshake_key: " + self.client_handshake_key)
         print(b"server_handshake_key: " + self.server_handshake_key)
         print(b"client_handshake_iv: " + self.client_handshake_iv)
@@ -159,7 +160,7 @@ class TLS_Connection:
         # -  A single 0 byte which serves as the separator
         # -  The content to be signed
         dignital_signature =  b"\x20"*64
-        dignital_signature += b"TLS 1.3, client CertificateVerify"
+        dignital_signature += b"TLS 1.3, server CertificateVerify"
         dignital_signature += b"\x00"
         transcript_hash = Crypto_Helper.hash_transcript(self.cipher_suite, self.transcript_bytes)
         dignital_signature += transcript_hash
@@ -168,3 +169,8 @@ class TLS_Connection:
         Crypto_Helper.verify_certificate_signature(server_signature, dignital_signature, self.server_certificate, server_signature_algorithm)
 
         return
+
+    def verify_data(self, server_verify_data):
+        # see https://tools.ietf.org/html/rfc8446#section-4.4.4
+        transcript_hash = Crypto_Helper.hash_transcript(self.cipher_suite, self.transcript_bytes)
+        Crypto_Helper.verify_data(server_verify_data, self.server_handshake_traffic_secret, transcript_hash)
