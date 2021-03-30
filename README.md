@@ -1,3 +1,7 @@
-# Layerz
+# Protocols in Python
 
-Just a playground of clients/servers for different protocols and layers
+Implementations of different protocols in Python. So far it contains:
+
+- DNS server
+- (Secure) Websocket client & server
+- HTTPS client
