@@ -2,10 +2,10 @@
 import socket
 from request_builder import Request_Builder
 
-HOST = '0.0.0.0'
+HOST = "0.0.0.0"
 PORT = 8000
 
-# Proxy: chunked-encoding; Server: content-length 
+# Proxy: chunked-encoding; Server: content-length
 # Proxy: TOTAL_MATCH_CHUNKED = False
 # Server: TOTAL_MATCH_CHUNKED = True
 # flag_request_builder = Request_Builder()
@@ -56,11 +56,12 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.connect((HOST, PORT))
     for c in msg:
         s.send(c.encode("ascii"))
-    
+
     response = ""
     try:
         while True:
             response += s.recv(1).decode("ascii")
-    except socket.timeout: pass
+    except socket.timeout:
+        pass
     print("RECEIVED:")
     print(response)

@@ -1,9 +1,9 @@
 class Query:
     def __init__(self):
-        self.ENDINESS = 'big' 
+        self.ENDINESS = "big"
 
     def query_name(self):
-        return '.'.join(self.name_parts)
+        return ".".join(self.name_parts)
 
     def pack(self):
         #                                 1  1  1  1  1  1
@@ -18,8 +18,8 @@ class Query:
         # |                     QCLASS                    |
         # +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
         name_length = len(self.name_parts)
-        packed = b''
-        
+        packed = b""
+
         for i in range(name_length):
             name_part = self.name_parts[i]
             name_part_length = len(name_part)
@@ -36,9 +36,10 @@ class Query:
         packed += self.qclass.to_bytes(2, self.ENDINESS)
         return packed
 
+
 class Answer:
     def __init__(self):
-        self.ENDINESS = 'big' 
+        self.ENDINESS = "big"
 
     def pack(self):
         #                                 1  1  1  1  1  1
@@ -62,8 +63,8 @@ class Answer:
         # /                                               /
         # +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
         name_length = len(self.name_parts)
-        packed = b''
-        
+        packed = b""
+
         for i in range(name_length):
             name_part = self.name_parts[i]
             name_part_length = len(name_part)
@@ -79,7 +80,7 @@ class Answer:
         packed += self.atype.to_bytes(2, self.ENDINESS)
         packed += self.aclass.to_bytes(2, self.ENDINESS)
         packed += self.ttl.to_bytes(4, self.ENDINESS)
-        
+
         rd_length = len(self.rdata_parts)
         packed += rd_length.to_bytes(2, self.ENDINESS)
         for i in range(rd_length):
@@ -87,11 +88,12 @@ class Answer:
 
         return packed
 
+
 # For full documentation see https://www.ietf.org/rfc/rfc1035.txt chapter 4
 class Dns_Request:
     def __init__(self, raw_data):
-        self.ENDINESS = 'big' 
-        
+        self.ENDINESS = "big"
+
         #                                 1  1  1  1  1  1
         #   0  1  2  3  4  5  6  7  8  9  0  1  2  3  4  5
         # +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
@@ -134,22 +136,22 @@ class Dns_Request:
         # |QR|   Opcode  |AA|TC|RD|RA|   Z    |   RCODE   |
         # +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
         # due to big ENDINESS read backwards
-        self.response_code = header & pow(2,4)
+        self.response_code = header & pow(2, 4)
         header = header >> 4
         # we ignore the next 3 bits, because they're not used (resevered for future use)
         header = header >> 3
-        self.recursion_available  = header & 1
+        self.recursion_available = header & 1
         header = header >> 1
         self.recursion_desired = header & 1
         header = header >> 1
-        self.truncation  = header & 1
+        self.truncation = header & 1
         header = header >> 1
         self.authoritative_answer = header & 1
         header = header >> 4
-        self.opcode = header & pow(2,4)
+        self.opcode = header & pow(2, 4)
         header = header >> 1
         self.is_query = header & 1
-    
+
     def parse_name_parts(self, raw_data, byte_counter):
         name_parts = []
         while True:
@@ -166,7 +168,7 @@ class Dns_Request:
                 name_part += chr(current_byte)
                 byte_counter += 1
             name_parts.append(name_part)
-        
+
         return name_parts, byte_counter
 
     def parse_queries(self, raw_data, byte_counter, query_count):
@@ -185,17 +187,23 @@ class Dns_Request:
             query = Query()
             self.queries.append(query)
             # the query name is divided into parts
-            query.name_parts, byte_counter = self.parse_name_parts(raw_data, byte_counter)
+            query.name_parts, byte_counter = self.parse_name_parts(
+                raw_data, byte_counter
+            )
 
             # type of the query: A = 0x01; AAAA = 0x1c;
-            query.qtype = int.from_bytes(raw_data[byte_counter:byte_counter + 2], self.ENDINESS)
+            query.qtype = int.from_bytes(
+                raw_data[byte_counter : byte_counter + 2], self.ENDINESS
+            )
             byte_counter += 2
             # class of the query: IN (internet) = 0x01 (often the only one used)
-            query.qclass = int.from_bytes(raw_data[byte_counter:byte_counter + 2], self.ENDINESS)
+            query.qclass = int.from_bytes(
+                raw_data[byte_counter : byte_counter + 2], self.ENDINESS
+            )
             byte_counter += 2
 
         return byte_counter
-    
+
     def turn_into_response(self, response_code):
         # set the is_query bit to true
         self.is_query = 1
@@ -225,7 +233,7 @@ class Dns_Request:
 
         answer = Answer()
         self.answers.append(answer)
-        answer.name_parts = hostname.split('.')
+        answer.name_parts = hostname.split(".")
         # type of the query: A = 0x01; AAAA = 0x1c;
         answer.atype = 1
         # class of the query: IN (internet) = 0x01 (often the only one used)
@@ -235,7 +243,7 @@ class Dns_Request:
         answer.rdata_parts = []
         for i in range(len(split_ip)):
             answer.rdata_parts.append(int(split_ip[i]))
-        
+
     def pack_header(self):
         #                                 1  1  1  1  1  1
         #   0  1  2  3  4  5  6  7  8  9  0  1  2  3  4  5
@@ -243,7 +251,7 @@ class Dns_Request:
         # |QR|   Opcode  |AA|TC|RD|RA|   Z    |   RCODE   |
         # +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
         # due to big ENDINESS write backwards
-        header = self.response_code 
+        header = self.response_code
         header += self.recursion_available << 7
         header += self.recursion_desired << 8
         header += self.truncation << 9
@@ -253,15 +261,15 @@ class Dns_Request:
         return header.to_bytes(2, self.ENDINESS)
 
     def pack_queries(self):
-        queries = b''
+        queries = b""
         for i in range(len(self.queries)):
-                queries += self.queries[i].pack()
+            queries += self.queries[i].pack()
         return queries
 
     def pack_answers(self):
-        answers = b''
+        answers = b""
         for i in range(len(self.answers)):
-                answers += self.answers[i].pack()
+            answers += self.answers[i].pack()
         return answers
 
     def pack(self):

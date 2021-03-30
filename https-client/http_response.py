@@ -13,7 +13,7 @@ class Http_Response:
             line += conn.recv(1).decode("utf-8")
             if line.endswith("\r\n"):
                 # remove the line break
-                line = line[:len(line) - 2]
+                line = line[: len(line) - 2]
                 # if the lines is empty, the header section has ended
                 if line is "":
                     break
@@ -21,7 +21,10 @@ class Http_Response:
                 line = ""
                 self.headers[split_line[0]] = split_line[1]
 
-        if "Transfer-Encoding" in self.headers and self.headers["Transfer-Encoding"] == "chunked":
+        if (
+            "Transfer-Encoding" in self.headers
+            and self.headers["Transfer-Encoding"] == "chunked"
+        ):
             self.parse_chunked_body(conn)
         elif "Content-Length" in self.headers:
             self.parse_content_length_body(conn)
@@ -33,7 +36,7 @@ class Http_Response:
         self.http_version = split_start_line[0]
         self.status_code = split_start_line[1]
         self.status_message = split_start_line[2]
-    
+
     def parse_chunked_body(self, conn):
         self.body = ""
         while True:
@@ -42,9 +45,9 @@ class Http_Response:
                 length += conn.recv(1).decode("utf-8")
                 if length.endswith("\r\n"):
                     # remove the line break from the length and parse from hex to int
-                    length = int(length[:len(length) - 2], 16)
+                    length = int(length[: len(length) - 2], 16)
                     break
-                
+
             # if the length is 0 the body has ended
             if length == 0:
                 break
@@ -53,9 +56,9 @@ class Http_Response:
 
     def parse_content_length_body(self, conn):
         content_length = int(self.headers["Content-Length"])
-        
+
         self.body = self.receive_length(conn, content_length)
-    
+
     def receive_length(self, conn, length):
         BUFFER_SIZE = 4096
         buffer = ""
@@ -70,4 +73,3 @@ class Http_Response:
             buffer += conn.recv(length_to_retrieve).decode("utf-8")
 
         return buffer
-

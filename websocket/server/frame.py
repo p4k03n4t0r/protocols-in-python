@@ -18,7 +18,7 @@
 #  |                     Payload Data continued ...                |
 #  +---------------------------------------------------------------+
 class Frame:
-    ENDINESS = 'big'
+    ENDINESS = "big"
 
     def __init__(self, conn):
         # receive first two bytes to read the header
@@ -30,7 +30,12 @@ class Frame:
         # opcode 9 = Ping Frame
         # opcode 10 = Pong Frame
         # for both we finished parsing, since there is no payload
-        if self.opcode == 0 or self.opcode == 8 or self.opcode == 9 or self.opcode == 10:
+        if (
+            self.opcode == 0
+            or self.opcode == 8
+            or self.opcode == 9
+            or self.opcode == 10
+        ):
             return
         # if the given length in the header is 126, the actual length is in the next 2 bytes
         if self.payload_length == 126:
@@ -50,13 +55,13 @@ class Frame:
         # this must be the case for client->server communication
         if self.mask != 1:
             raise Exception("Masking should be turned on")
-            
+
         # next 4 bytes are the masking key
-        self.masking_key = [data[i], data[i+1], data[i+2], data[i+3]]
+        self.masking_key = [data[i], data[i + 1], data[i + 2], data[i + 3]]
         i += 4
 
         # loop through the payload based on the given length
-        self.payload = b''
+        self.payload = b""
         l = 0
         for j in range(self.payload_length):
             # read the byte
@@ -72,9 +77,9 @@ class Frame:
         # if the opcode is 1 convert the payload from bytes to text
         if self.opcode == 1:
             self.payload = self.payload.decode("ascii")
-        
+
     def parse_header(self, header):
-        #   0                   1          
+        #   0                   1
         #   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
         #  +-+-+-+-+-------+-+-------------+
         #  |F|R|R|R| opcode|M| Payload len |
@@ -82,11 +87,11 @@ class Frame:
         #  |N|V|V|V|       |S|             |
         #  | |1|2|3|       |K|             |
         #  +-+-+-+-+-------+-+-------------+
-        self.payload_length = header % pow(2,7)
+        self.payload_length = header % pow(2, 7)
         header = header >> 7
-        self.mask = header % pow(2,1)
+        self.mask = header % pow(2, 1)
         header = header >> 1
-        self.opcode = header % pow(2,4)
+        self.opcode = header % pow(2, 4)
         # if self.opcode is 0:
         #     raise Exception("Continuation Frames not implemented yet")
         header = header >> 4
@@ -108,7 +113,7 @@ class Frame:
 
     @staticmethod
     def encode_header_and_length(opcode, payload):
-        #   0                   1          
+        #   0                   1
         #   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
         #  +-+-+-+-+-------+-+-------------+
         #  |F|R|R|R| opcode|M| Payload len |
@@ -123,21 +128,25 @@ class Frame:
             # and create an extended payload length with size 8 bytes
             if payload_length > 65535:
                 encoded_header = 127
-                encoded_extended_payload_length = payload_length.to_bytes(8, Frame.ENDINESS)
+                encoded_extended_payload_length = payload_length.to_bytes(
+                    8, Frame.ENDINESS
+                )
             # if payload is longer than 15 bits, set header to value 126
             # and create an extended payload length with size 2 bytes
             elif payload_length > 125:
                 encoded_header = 126
-                encoded_extended_payload_length = payload_length.to_bytes(2, Frame.ENDINESS)
+                encoded_extended_payload_length = payload_length.to_bytes(
+                    2, Frame.ENDINESS
+                )
             else:
                 encoded_header = payload_length
-                encoded_extended_payload_length = b''
+                encoded_extended_payload_length = b""
         elif opcode == 8 or opcode == 9 or opcode == 10:
             encoded_header = 0
-            encoded_extended_payload_length = b''
+            encoded_extended_payload_length = b""
         else:
             raise Exception("opcode {} not implemented yet".format(opcode))
-        
+
         # add mask (off = 0, because server->client shouldn't be masked)
         encoded_header += 0 << 7
         # add opcode (opcode 1 = text)
@@ -147,7 +156,7 @@ class Frame:
         encode_header_and_length = encoded_header.to_bytes(2, Frame.ENDINESS)
         encode_header_and_length += encoded_extended_payload_length
         return encode_header_and_length
-    
+
     @staticmethod
     def encode_close_frame():
         # opcode 8 indicates we sent a Close Frame

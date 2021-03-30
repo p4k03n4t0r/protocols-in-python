@@ -1,6 +1,6 @@
-class Http_Message: 
+class Http_Message:
     def __init__(self, received_connection, total_match_chunked):
-        self.raw = "" 
+        self.raw = ""
         self.total_match_chunked = total_match_chunked
         line = self.retrieve_startline(received_connection)
         self.parse_startline(line)
@@ -9,7 +9,9 @@ class Http_Message:
         self.parse_headerlines(lines)
 
         # use transfer-encoding above content-length
-        if "Transfer-Encoding" in self.headers and self.is_chunked_encoding(self.headers["Transfer-Encoding"]):
+        if "Transfer-Encoding" in self.headers and self.is_chunked_encoding(
+            self.headers["Transfer-Encoding"]
+        ):
             print("Using chunked encoding")
             self.body = self.retrieve_transfer_encoding_body(received_connection)
         elif "Content-Length" in self.headers:
@@ -20,10 +22,10 @@ class Http_Message:
 
     def is_chunked_encoding(self, header_value):
         if self.total_match_chunked:
-            return self.headers['Transfer-Encoding'] == "chunked"
+            return self.headers["Transfer-Encoding"] == "chunked"
         else:
-            return "chunked" in self.headers['Transfer-Encoding']
-            
+            return "chunked" in self.headers["Transfer-Encoding"]
+
     def retrieve_startline(self, conn):
         line = ""
         while True:
@@ -37,7 +39,9 @@ class Http_Message:
     def parse_startline(self, startline):
         line_parts = startline.split(" ")
         if len(line_parts) != 3:
-            raise Exception("Startline must be three parts split by spaces: '{}'".format(line_parts))
+            raise Exception(
+                "Startline must be three parts split by spaces: '{}'".format(line_parts)
+            )
         self.http_method = line_parts[0]
         self.request_target = line_parts[1]
         self.http_version = line_parts[2]
@@ -81,7 +85,7 @@ class Http_Message:
         # body ends with line break
         self.retrieve_line_break(conn)
         return body
-    
+
     def retrieve_transfer_encoding_body(self, conn):
         body = ""
         length_line = ""
@@ -94,7 +98,11 @@ class Http_Message:
                 try:
                     length = int(length_line, 16)
                 except ValueError:
-                    raise Exception("Invalid length for chunked encoding part '{}'".format(length_line))
+                    raise Exception(
+                        "Invalid length for chunked encoding part '{}'".format(
+                            length_line
+                        )
+                    )
                 if length == 0:
                     break
                 chunk = ""
@@ -103,7 +111,9 @@ class Http_Message:
                     chunk += c
                     self.raw += c
                 if not chunk.endswith("\r\n"):
-                    raise Exception("Chunk '{}' should end with a linebreak".format(chunk))
+                    raise Exception(
+                        "Chunk '{}' should end with a linebreak".format(chunk)
+                    )
                 body += chunk.replace("\r\n", "")
                 length_line = ""
 

@@ -3,7 +3,7 @@ import math
 
 # An instance of this class represents a single message in a TLS connection
 class TLS_Message:
-    ENDINESS = 'big'
+    ENDINESS = "big"
 
     # TODO it's probably better if the enums are the other way around (key=hex, value=string) if we want to use them to pretty print the hex codes
     # TODO might be better to move the enums to a seperate class (or not...🙂)
@@ -11,15 +11,15 @@ class TLS_Message:
     # Use 'openssl ciphers -V' for more info about ciphers and which one can be used for TLS 1.3
     # Cipher suite names follow the naming convention:
     # CipherSuite TLS_AEAD_HASH
-    #   - TLS = The string "TLS"  
+    #   - TLS = The string "TLS"
     #   - AEAD = The AEAD algorithm used for record protection
-    #   - HASH = The hash algorithm used with HKDF   
+    #   - HASH = The hash algorithm used with HKDF
     AVAILABLE_CIPHERS = {
         "TLS_AES_128_GCM_SHA256": b"\x13\x01",
         "TLS_AES_256_GCM_SHA384": b"\x13\x02",
         "TLS_CHACHA20_POLY1305_SHA256": b"\x13\x03",
         "TLS_AES_128_CCM_SHA256": b"\x13\x04",
-        "TLS_AES_128_CCM_8_SHA256": b"\x13\x05"
+        "TLS_AES_128_CCM_8_SHA256": b"\x13\x05",
     }
 
     # TODO for now only the ECDHE groups are supported except x448
@@ -67,14 +67,14 @@ class TLS_Message:
         "tls1.0": b"\x03\01",
         "tls1.1": b"\x03\02",
         "tls1.2": b"\x03\03",
-        "tls1.3": b"\x03\04"
+        "tls1.3": b"\x03\04",
     }
 
     MESSAGE_TYPES = {
         "change_cipher_spec": b"\x14",
         "alert": b"\x15",
         "handshake": b"\x16",
-        "application_data": b"\x17"
+        "application_data": b"\x17",
     }
 
     HANDSHAKE_TYPES = {
@@ -87,13 +87,10 @@ class TLS_Message:
         "certificate_request": b"\x0d",
         "certificate_verify": b"\x0f",
         "finished": b"\x14",
-        "key_update": b"\x18"
+        "key_update": b"\x18",
     }
 
-    ALERT_LEVEL = {
-        b"\x01": "warning",
-        b"\x02": "fatal"
-    }
+    ALERT_LEVEL = {b"\x01": "warning", b"\x02": "fatal"}
 
     ALERT_DESCRIPTION = {
         b"\x00": "close_notify",
@@ -122,9 +119,9 @@ class TLS_Message:
         b"\x64": "no_renegotiation",
         b"\x6e": "unsupported_extension",
     }
-    
+
     def __init__(self, message_type, message_version):
-        self.ENDINESS = TLS_Message.ENDINESS 
+        self.ENDINESS = TLS_Message.ENDINESS
         self.server_name = None
         self.ciphers = []
         self.supported_groups = []
@@ -141,7 +138,9 @@ class TLS_Message:
             raise Exception("Message_type must either be a string or bytes")
         if isinstance(message_version, str):
             if message_version not in self.TLS_VERSIONS:
-                raise Exception("Message version {} is not available".format(message_version))
+                raise Exception(
+                    "Message version {} is not available".format(message_version)
+                )
             self.message_version = self.TLS_VERSIONS[message_version]
         elif isinstance(message_version, bytes):
             self.message_version = message_version
@@ -151,7 +150,7 @@ class TLS_Message:
         self.session = None
         self.application_data = None
         self.key_exchange = None
-        
+
     def generate_random(self):
         # generate random number which is 32 bytes long
         random_number = self.get_random_number(32)
@@ -162,12 +161,16 @@ class TLS_Message:
 
     def set_handshake_type(self, handshake_type_name):
         if handshake_type_name not in self.HANDSHAKE_TYPES:
-            raise Exception("Handshake type {} is not available".format(handshake_type_name))
+            raise Exception(
+                "Handshake type {} is not available".format(handshake_type_name)
+            )
         self.handshake_type = self.HANDSHAKE_TYPES[handshake_type_name]
 
     def set_handshake_version(self, handshake_version_name):
         if handshake_version_name not in self.TLS_VERSIONS:
-            raise Exception("Handshake type {} is not available".format(handshake_version_name))
+            raise Exception(
+                "Handshake type {} is not available".format(handshake_version_name)
+            )
         self.handshake_version = self.TLS_VERSIONS[handshake_version_name]
 
     def add_cipher(self, cipher_name):
@@ -177,20 +180,39 @@ class TLS_Message:
 
     def add_supported_group(self, supported_group_name):
         if supported_group_name not in self.AVAILABLE_SUPPORTED_GROUPS:
-            raise Exception("Supported group {} is not available".format(supported_group_name))
-        self.supported_groups.append(self.AVAILABLE_SUPPORTED_GROUPS[supported_group_name])
+            raise Exception(
+                "Supported group {} is not available".format(supported_group_name)
+            )
+        self.supported_groups.append(
+            self.AVAILABLE_SUPPORTED_GROUPS[supported_group_name]
+        )
 
     def add_signature_hash_algorithm(self, signature_hash_algorithm_name):
-        if signature_hash_algorithm_name not in self.AVAILABLE_HASH_SIGNATURE_ALGORITHMS:
-            raise Exception("Signature hash algorithm {} is not available".format(signature_hash_algorithm_name))
-        self.signature_algorithms.append(self.AVAILABLE_HASH_SIGNATURE_ALGORITHMS[signature_hash_algorithm_name])
+        if (
+            signature_hash_algorithm_name
+            not in self.AVAILABLE_HASH_SIGNATURE_ALGORITHMS
+        ):
+            raise Exception(
+                "Signature hash algorithm {} is not available".format(
+                    signature_hash_algorithm_name
+                )
+            )
+        self.signature_algorithms.append(
+            self.AVAILABLE_HASH_SIGNATURE_ALGORITHMS[signature_hash_algorithm_name]
+        )
 
     def add_supported_version(self, supported_version_name):
         if supported_version_name not in self.TLS_VERSIONS:
-            raise Exception("Supported version {} is not available".format(supported_version_name))
+            raise Exception(
+                "Supported version {} is not available".format(supported_version_name)
+            )
         self.supported_versions.append(self.TLS_VERSIONS[supported_version_name])
 
     def add_public_key(self, public_key, key_group_name):
         if key_group_name not in self.AVAILABLE_SUPPORTED_GROUPS:
-            raise Exception("Supported group {} is not available".format(key_group_name))
-        self.public_keys.append({self.AVAILABLE_SUPPORTED_GROUPS[key_group_name]: public_key})
+            raise Exception(
+                "Supported group {} is not available".format(key_group_name)
+            )
+        self.public_keys.append(
+            {self.AVAILABLE_SUPPORTED_GROUPS[key_group_name]: public_key}
+        )

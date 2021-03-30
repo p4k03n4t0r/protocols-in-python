@@ -19,8 +19,8 @@ def wrap_in_tls_13(socket, host):
     client_hello_message = TLS_Message("handshake", "tls1.0")
     client_hello_message.set_handshake_type("client_hello")
     tls_connection.session = client_hello_message.session
-    # Because middleboxes have been created and widely deployed that do not allow protocol versions that they do not recognize, 
-    # the TLS 1.3 session must be disguised as a TLS 1.2 session. This field is no longer used for version negotiation and is hardcoded to the 1.2 version. 
+    # Because middleboxes have been created and widely deployed that do not allow protocol versions that they do not recognize,
+    # the TLS 1.3 session must be disguised as a TLS 1.2 session. This field is no longer used for version negotiation and is hardcoded to the 1.2 version.
     # Instead version negotiation is performed using the "Supported Versions" extension.
     client_hello_message.set_handshake_version("tls1.2")
     client_hello_message.server_name = host
@@ -32,21 +32,32 @@ def wrap_in_tls_13(socket, host):
     cryptographic_group = "x25519"
     # cryptographic_group = "secp256r1"
     client_hello_message.add_supported_group(cryptographic_group)
-    client_private_key, client_public_key, client_key_share = Crypto_Helper.generate_client_keys(cryptographic_group)
+    (
+        client_private_key,
+        client_public_key,
+        client_key_share,
+    ) = Crypto_Helper.generate_client_keys(cryptographic_group)
     tls_connection.client_public_key = client_public_key
     tls_connection.client_private_key = client_private_key
     client_hello_message.add_public_key(client_key_share, cryptographic_group)
     # pack the request and send
     tls_connection.send(client_hello_message)
 
-
     # STEP 2) Receive Server Hello or Hello Client Retry handshake message
     server_response = tls_connection.receive()
     # handshake (x16/22)
     if server_response.message_type != b"\x16":
-        raise Exception("Expected a Handshake response, but got {}".format(server_response.message_type))
+        raise Exception(
+            "Expected a Handshake response, but got {}".format(
+                server_response.message_type
+            )
+        )
     if server_response.handshake_type != b"\x02":
-        raise Exception("Expected a Server Hello or Hello Retry, but got {}".format(server_response.handshake_type))
+        raise Exception(
+            "Expected a Server Hello or Hello Retry, but got {}".format(
+                server_response.handshake_type
+            )
+        )
     # if the response is a HelloRetryRequest this means the server is able to find an acceptable set of parameters but the ClientHello does not contain sufficient information to proceed with the handshake
     # it's kinda vague, but if the server handshake message doesn't contain a key exchange it's probably a Hello_Retry_Request
     if server_response.key_exchange is not None:
@@ -62,81 +73,100 @@ def wrap_in_tls_13(socket, host):
         # -> this might be followed by a change cipher spec (but this doesn't add anything)
         # -> we can no calculate the keys with the response from the server
         tls_connection.calculate_keys()
-        # -> all following messages afterwards are application data messages (x17) which will use the calculated keys to encrypt/decrypt 
+        # -> all following messages afterwards are application data messages (x17) which will use the calculated keys to encrypt/decrypt
     else:
         print("Received Hello_Retry_Request")
         # -> client must response with a new Client_Hello with same session id, but changed key_share based on content of Hello_Retry_Request
         # (this probably means generating a new key with a different algorithm)
         # -> next response should be a Server_Hello message
         # for now print the expected curve and quit
-        print("Expected cryptographic group: {}".format(server_response.supported_group))
-        # TODO send another Client Hello with a key using the expected cryptographic group 
+        print(
+            "Expected cryptographic group: {}".format(server_response.supported_group)
+        )
+        # TODO send another Client Hello with a key using the expected cryptographic group
         # note: check or hashing in calculate_keys() still works if a second Hello Client is send
         raise Exception("Hello_Retry_Request unimplemented")
-
 
     # STEP 3) We send a Change Cipher Spec message
     change_cipher_spec_message = TLS_Message("change_cipher_spec", "tls1.0")
     tls_connection.send(change_cipher_spec_message)
 
-
     # STEP 4) We receive a Change Cipher Spec message
     server_response = tls_connection.receive()
     # change_cipher_spec (x14/20)
     if server_response.message_type != b"\x14":
-        raise Exception("Expected a Change Cipher Spec, but got {}".format(server_response.message_type))
+        raise Exception(
+            "Expected a Change Cipher Spec, but got {}".format(
+                server_response.message_type
+            )
+        )
 
-
-    # NOTE: the key exchange has taken place, so all messages from now on will be encrypted as application data (x17/23) 
+    # NOTE: the key exchange has taken place, so all messages from now on will be encrypted as application data (x17/23)
     # these messages will automatically be decrypted in the receive step
-
 
     # STEP 5) We receive a Encrypted Extensions message
     server_response = tls_connection.receive()
     # handshake (x16/22)
     if server_response.message_type != b"\x16":
-        raise Exception("Expected a Handshake response, but got {}".format(server_response.message_type))
+        raise Exception(
+            "Expected a Handshake response, but got {}".format(
+                server_response.message_type
+            )
+        )
     print(server_response)
-
 
     # STEP 6) We receive a Certificate message
     server_response = tls_connection.receive()
     # handshake (x16/22)
     if server_response.message_type != b"\x16":
-        raise Exception("Expected a Handshake response, but got {}".format(server_response.message_type))
+        raise Exception(
+            "Expected a Handshake response, but got {}".format(
+                server_response.message_type
+            )
+        )
     if server_response.handshake_type != b"\x0b":
-        raise Exception("Expected a Certificate, but got {}".format(server_response.handshake_type))
+        raise Exception(
+            "Expected a Certificate, but got {}".format(server_response.handshake_type)
+        )
     # TODO validate certificate of the server
     tls_connection.server_certificate = server_response.certificate
-    
 
     # STEP 7) We receive a Certificate Verify message
     server_response = tls_connection.receive()
     # handshake (x16/22)
     if server_response.message_type != b"\x16":
-        raise Exception("Expected a Handshake response, but got {}".format(server_response.message_type))
+        raise Exception(
+            "Expected a Handshake response, but got {}".format(
+                server_response.message_type
+            )
+        )
     if server_response.handshake_type != b"\x0f":
-        raise Exception("Expected a Certificate Verify, but got {}".format(server_response.handshake_type))
+        raise Exception(
+            "Expected a Certificate Verify, but got {}".format(
+                server_response.handshake_type
+            )
+        )
     # tls_connection.verify_certificate(server_response.server_signature_algorithm, server_response.server_signature)
-
 
     # STEP 8) We receive a Finished message
     server_response = tls_connection.receive()
     # handshake (x16/22)
     if server_response.message_type != b"\x16":
-        raise Exception("Expected a Handshake response, but got {}".format(server_response.message_type))
+        raise Exception(
+            "Expected a Handshake response, but got {}".format(
+                server_response.message_type
+            )
+        )
     if server_response.handshake_type != b"\x14":
-        raise Exception("Expected a Finished, but got {}".format(server_response.handshake_type))
+        raise Exception(
+            "Expected a Finished, but got {}".format(server_response.handshake_type)
+        )
     print(server_response.server_verify_data)
     tls_connection.verify_data(server_response.server_verify_data)
 
-
     # STEP 9)We send a Certificate and Certificate Verify (optional ?)
 
-
     # STEP 10) Client Application Key Calc (optional ?)
-
-
 
     # STEP 11) We send a Finished message
     finished_message = TLS_Message("application_data", "tls1.0")
@@ -145,12 +175,12 @@ def wrap_in_tls_13(socket, host):
     finished_message.client_verify_data = None
     tls_connection.send(finished_message)
 
-
     print("Handshake finished! 🥳🥳🥳")
 
     return tls_connection
 
-host = 'github.com'
+
+host = "github.com"
 # host = 'example.com'
 port = 443
 
